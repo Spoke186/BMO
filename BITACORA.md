@@ -108,7 +108,7 @@ NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop
 
 ## 5. Infra / accesos
 - **Repo:** https://github.com/Spoke186/BMO · branch principal `main`.
-- **Owner:** Spoke186. **Colaboradores:** 2317SECH, ptala611-oss (ambos invitados, write).
+- **Owner:** Spoke186. **Colaboradores:** 2317SECH, ptala611-oss (ambos **aceptaron**, write activo).
 - **gh CLI:** v2.93.0, autenticado como Spoke186 en el PC de Esteban.
 - **Flujo git:** cada stream en su branch (`stream-a/b/c`), PR a `main`, dueño de sus carpetas.
 - **Secretos:** nunca en repo. `.env` y `settings.local.json` en `.gitignore`. Token del AddOn →
