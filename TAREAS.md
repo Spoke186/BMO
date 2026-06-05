@@ -15,7 +15,7 @@
 | N4 | Nombre/ID de cuenta en NT8 (ej `APEX-xxxxx`) | Operador | `AccountName` en el AddOn | ⛔ depende N1 |
 | N5 | Símbolo + contrato vigente (NQ vs **MNQ**) | Operador | `InstrumentName` en el AddOn | ⬜ (recomendado MNQ) |
 | N6 | Cuál PC es **PC-LIVE** (corre NT8 24/5) | Operador | Dónde viven bot + AddOn + MCP | ⬜ |
-| N7 | **2º usuario GitHub** | Operador | Invitar 2º colaborador | ⬜ |
+| N7 | **2º usuario GitHub** | Operador | Invitar 2º colaborador | ✅ ptala611-oss invitado |
 | N8 | Token bot **Telegram** + chat id | Operador | Alertas (Stream C) | ⬜ (después) |
 | N9 | Visibilidad repo: público vs **privado** | Operador | Seguridad (hoy público) | ⬜ decisión |
 
@@ -57,8 +57,7 @@
 |-------|--------|
 | Repo GitHub Spoke186/BMO creado + push `main` | ✅ |
 | `gh` instalado + autenticado (Spoke186) | ✅ |
-| Colaborador 2317SECH invitado (write) | ✅ (falta que acepte) |
-| 2º colaborador | ⛔ N7 |
+| Colaboradores 2317SECH + ptala611-oss invitados (write) | ✅ (falta que acepten) |
 | Decidir visibilidad repo | ⬜ N9 |
 
 ---

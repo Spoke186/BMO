@@ -70,7 +70,7 @@ NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop
 - **Infra:** instalado `gh` v2.93.0 (`C:\Program Files\GitHub CLI\gh.exe`), autenticado como
   **Spoke186** (HTTPS, keyring).
 - **GitHub:** creado repo **Spoke186/BMO** (PÚBLICO), push de `main` OK.
-- **Colaboradores:** invitado **2317SECH** (permiso write). Pendiente: 2º colaborador.
+- **Colaboradores:** invitados **2317SECH** y **ptala611-oss** (permiso write). Equipo completo (3).
 - Creada esta bitácora.
 
 ---
@@ -108,7 +108,7 @@ NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop
 
 ## 5. Infra / accesos
 - **Repo:** https://github.com/Spoke186/BMO · branch principal `main`.
-- **Owner:** Spoke186. **Colaboradores:** 2317SECH (invitado), [2º pendiente].
+- **Owner:** Spoke186. **Colaboradores:** 2317SECH, ptala611-oss (ambos invitados, write).
 - **gh CLI:** v2.93.0, autenticado como Spoke186 en el PC de Esteban.
 - **Flujo git:** cada stream en su branch (`stream-a/b/c`), PR a `main`, dueño de sus carpetas.
 - **Secretos:** nunca en repo. `.env` y `settings.local.json` en `.gitignore`. Token del AddOn →
