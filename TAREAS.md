@@ -113,15 +113,55 @@ N6 (PC-LIVE) ─► B5, C4
 
 ---
 
-## E. Acción inmediata (sesión 12)
-- **Esteban (Stream A):** correr A7. **F5 primero** (sesión 12 metió el Input `SessionTemplateName`
-  default `CME US Index Futures ETH` → la serie 15m ya trae datos overnight desde el código; no hay que
-  cambiar la plantilla a mano). Instrumento **NQ** (`NQ ##-##` o front month), serie primaria **1m**,
-  `EnableSetupB=ON`, `KillZoneEnd=1100`. Auto-chequeo `[PRE-AP]` en NinjaScript Output (debe decir
-  `Range 1m` o `Range 15m fallback`, NO `SIN datos overnight`). Pestaña **Trades → Export CSV** →
-  `python analyze_backtest.py <csv>`: el desglose A vs B (A13) sale solo. Luego A8 (tuning).
-- **A13 herramienta lista** (sesión 12): `analyze_backtest.py` etiqueta por `Entry name` y compara
-  A/B/combinado. Solo falta la data de A7.
-- **Sergio (Stream B + estrategia):** B9 — activar bitácora Notion (token N11, acceso BD, validar en Sim). A12 — exponer Setup B en `/setup`.
-- **Alan (Stream C):** C8 — bot Telegram con **señales** de entrada en vivo (dir/precio/setup/stop/target) + formato + activación (token N8).
+## E. Acción inmediata (sesión 13)
+- **Reto Setup A vs B — A y B CONECTADOS** (como los diseñó Sergio; no se aíslan). Cada uno tunea los
+  params de SU setup sobre el run combinado; A13 muestra la contribución de cada uno. Meta y tareas en **§F**.
+- **Esteban (Setup A):** EA1 compilar+correr en NT8 (F5) la estrategia mergeada (#28) — catch-up.
+  Plantilla **`CME US Index Futures ETH`** en el Analyzer (overnight). Luego tunear A (EA3, §F).
+- **Sergio (Setup B):** tunear params de B sobre el run conectado (SB3, §F). *(Aislar B con un Input
+  `EnableSetupA` queda parqueado — no se hace por ahora.)*
+- **Alan (Stream C):** C8 — bot Telegram con señales (sin cambio; PR #27 pendiente de rebase).
 - **Operador:** N1 (Apex), N6 (PC-LIVE), N8 (token Telegram), N10 (valor punto), N11 (token Notion).
+
+---
+
+## F. Reto Setup A vs B — bot que logre **≥ $3.000 / mes** (sesión 13)
+
+> Alineado a la estrategia mergeada `ApexNqIctStrategy.cs` (#28 de Sergio). El objetivo es decidir,
+> con datos, **cuál setup (A o B) rinde mejor** y dejar el bot tuneado para el profit goal Apex.
+
+### Meta compartida (criterios de éxito del backtest)
+- **Backtest:** NQ (`NQ ##-##` o front month), **1m primaria**, sesión **`CME US Index Futures ETH`**
+  (Globex 24h, overnight obligatorio), **30 días (1 mes)**.
+- **Frecuencia:** la estrategia es **selectiva** (1 trade/día; 2º opcional si el 1º gana vía
+  `Allow2ndTradeIfWinner`) → **NO se fuerza un trade diario**. Objetivo: **≥ 10 trades buenos/mes**
+  (Sergio venía en ~8-11/mes). "Bueno" = ganador (cierra en TP +$700).
+- **Profit neto del mes ≥ $3.000** (= profit goal Apex). Bracket fijo: **win +$700 / loss −$250**.
+  Math: a ~12 trades/mes hace falta **~53% win rate**; con más frecuencia, win rate menor alcanza.
+- **Reglas Apex:** **consistencia 50%** (ningún día > 50% del profit del mes), **no romper daily loss
+  $400** ni **trailing DD $2.500**. Validar con `backtest/analyze_backtest.py` (proxy local).
+- **Cómo medir:** export Trades de NT8 → `python analyze_backtest.py <csv>` → registrar
+  **win rate, PF, net, #trades, consistencia 50%, max DD**.
+
+### Cómo se corren — sistema conectado A+B (como lo diseñó Sergio)
+A y B van **juntos**, no aislados: A (FVG, selectivo) se evalúa primero; B (sweep) entra los días que A
+no disparó (comparten `tradedToday`). El backtest corre el **sistema completo**; el desglose **A13**
+(`analyze_backtest.py` por `Entry name`) muestra cuántos trades y qué rendimiento aportó **cada setup
+dentro del sistema** — que es lo que pasa en la operación real. **No se aísla ni se edita el `.cs`.**
+
+| Tarea | Resp. | Estado | Depende |
+|-------|-------|--------|---------|
+| EA1 Compilar+correr la estrategia #28 en NT8 (F5) — catch-up | Esteban | ⬜ | — |
+| R1 Backtest del **sistema A+B** NQ 1m ETH 30d → export → `analyze_backtest.py` (baseline + split A/B) | ambos | ⬜ | EA1 |
+| EA3 Tunear params de **A** (`MinFvgPoints`, `DisplacementAtrMult`, `SwingStrength15m`, `RejectionWickRatio`, `FvgValidBars`, `SweepChochMaxBars15m`) | Esteban | ⬜ | R1 |
+| SB3 Tunear params de **B** (`MinSweepTicks`, `MinBodyTicks`, `SetupBRequiresTrend`, `SetupBMaxMinutes`, `EnablePdhPdl`, `Allow2ndTradeIfWinner`) | Sergio | ⬜ | R1 |
+| R2 Con A y B tuneados, correr el sistema 30d → A13 split → ver contribución de cada setup + chequear meta (≥10 trades/mes, ≥$3.000, consistencia) | ambos | ⬜ | EA3, SB3 |
+
+> **Comparación sin aislar:** el split A13 sobre el run conectado dice qué aporta cada setup en la
+> operación real (B solo dispara los días que A no). Si más adelante se quiere un *bake-off* puro
+> A-solo vs B-solo, queda **parqueada** la opción de un Input `EnableSetupA` (lo añadiría Sergio) —
+> **hoy NO se hace**, dejamos A+B conectados.
+
+> **Nota de alineación:** la estrategia es selectiva (~10-15 trades/mes, no diarios); el profit de
+> $3.000 sale de **win rate × frecuencia**, no de forzar entradas. `Allow2ndTradeIfWinner=true` sube
+> la frecuencia (2º trade tras un ganador) — palanca de tuning, no obligatorio.

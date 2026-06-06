@@ -69,6 +69,24 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 13 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: mergear #28 (estrategia de Sergio) + #26 (A13) + repartir el reto Setup A vs B (meta ≥$3.000/mes).**
+
+- **PRs:** #28 (Sergio, estrategia nueva A+B+C/PDH/PDL) y #26 (A13 tool) **mergeados a `main`**. #27 (Alan,
+  Telegram) **intacto** (decisión operador) — sigue abierto y CONFLICTING (pendiente rebase de Alan).
+  Local + NT8 de Esteban sincronizados a `main` (estrategia = la de Sergio).
+- **Reparto del reto (decisión operador):** **Esteban → Setup A (FVG)**, **Sergio → Setup B (sweep)**.
+  Cada uno tunea los params de SU setup; se compara contra la meta. Detalle en **TAREAS §F**.
+- **Meta:** backtest NQ 1m ETH **30 días** → **≥10 trades buenos/mes** + **neto ≥$3.000** + consistencia
+  50% + sin romper daily loss $400 / trailing DD $2.500. Bracket fijo win +$700 / loss −$250 → ~53% WR
+  a 12 trades/mes alcanza los $3.000. Medir con `analyze_backtest.py`.
+- **Decisión (operador): A y B quedan CONECTADOS**, como los diseñó Sergio — A se evalúa primero, B entra
+  los días que A no disparó (comparten `tradedToday`; 1 trade/día, 2º si gana via `Allow2ndTradeIfWinner`).
+  **No se aíslan ni se edita el `.cs`.** El run corre el sistema completo y el **split A13** (por
+  `Entry name`) muestra la contribución de cada setup en la operación real. Aislar B (Input `EnableSetupA`)
+  quedó **parqueado**. El "1-2 trades diarios" se reconcilió a la realidad selectiva (~10-15/mes).
+
 ### 2026-06-06 — Sesión 12 (Claude Stream A en PC de Esteban / Spoke186)
 
 **Tema: A13 (herramienta comparación Setup A vs B) + intento (revertido) de fijar sesión ETH + sync NT8.**
