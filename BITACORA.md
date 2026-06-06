@@ -88,6 +88,14 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
   guard de consistencia antes de `TryArmSetup`, `Save()` en `Terminated`). Solo activo en vivo para
   no corromper el JSON ni colapsar días en backtest. Brace/paren balance OK. Actualizado PREFLIGHT
   (3 .cs en `bin\Custom`) y CLAUDE.md.
+- **PR #4 (stream-b-v2 de Sergio) revisado y mergeado a `main`:** mock test MCP, README setup, VPS
+  research. Sin secretos reales (solo placeholder). CLEAN, sin conflictos.
+- **B3 (env) + fix instrumento:** AddOn ahora lee `BRIDGE_TOKEN` / `APEX_ACCOUNT` / `APEX_INSTRUMENT`
+  del entorno del SO (defaults Sim101 / NQ). **Corregido `InstrumentName` MNQ→NQ** (contradecía la
+  decisión LOCKED NQ mini). `.env.example` documenta las env vars + `setx`. (Edición cruzada a Stream B
+  autorizada por el operador; avisar a Sergio.)
+- **MCP validado local:** `npm install` en `mcp/` + `node mcp/test-tools.mjs` → **6/6 OK** en PC de Esteban.
+- **N9 decidido:** repo sigue **PÚBLICO**.
 
 ### 2026-06-05 — Sesión 3 (Claude Stream B/C en PC de Sergio — continuación)
 
