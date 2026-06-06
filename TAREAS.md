@@ -52,7 +52,7 @@
 | C3 Alertas Telegram (trade/error/daily loss/heartbeat) | 🚧 `alerts/TelegramAlerts.cs` listo; activa al pasar N8 | N8 |
 | C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅ (`infra/VPS_RESEARCH.md`); setup espera N6 | N6 |
 | C5 Runbook operación (arranque diario, caídas, checklist) | ✅ `infra/RUNBOOK.md` | — |
-| C6 Integrar `MarketCalendar.cs` en estrategia | ⬜ Pendiente Stream A — hook en OnBarUpdate antes de TryArmSetup | C1b |
+| C6 Integrar `MarketCalendar.cs` en estrategia | ✅ `ShouldSkipToday` + `BotForceCloseTime` en `ApexNqIctStrategy.cs` | C1b |
 
 ### Infra / repo (compartido)
 | Tarea | Estado |

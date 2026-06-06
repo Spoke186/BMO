@@ -206,8 +206,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 			UpdateRiskGuards();
 			RecordClosedTrades();
 
-			// Cierre forzado antes del fin de sesion Apex.
-			if (ToTime(Time[0]) >= ForcedExit * 100)
+			// Cierre forzado: el menor entre el parametro y el cierre CME del dia
+			// (media sesion CME = 12:45 ET; normal = ForcedExit = 15:55 ET).
+			int forceCloseHhmm = Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]));
+			if (ToTime(Time[0]) >= forceCloseHhmm * 100)
 			{
 				FlattenAndCancel("Cierre forzado");
 				return;
@@ -227,6 +229,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// sin trade hoy, sin posicion, riesgo OK y tendencia definida.
 			if (!ApexBridgeState.TradingEnabled || !inKillZone || tradedToday || tradingDisabled
 			    || trend == 0 || Position.MarketPosition != MarketPosition.Flat)
+				return;
+
+			// Festivo CME o fin de semana: no armar setups.
+			if (MarketCalendar.ShouldSkipToday(Time[0]))
 				return;
 
 			// Consistencia 50% Apex (solo en vivo): si GANAR este setup (ProfitTargetUsd) hiciera
