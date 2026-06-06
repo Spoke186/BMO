@@ -24,7 +24,8 @@ personas, cada una con un Claude Code en su PC. Repo: **https://github.com/Spoke
 | Entrada | **Setup A (FVG):** sweep rango pre-apertura → CHoCH+displacement (≥1.5×ATR) → FVG 15m → retroceso + confirmación 1m → mercado. **Setup B (`EnableSetupB`, default ON):** barrida del máx/mín pre-mercado en 1m → entrada directa SIN CHoCH/FVG ni filtro de tendencia (más trades) |
 | Stop | **USD fijo $250** (`CalculationMode.Currency`). El extremo del sweep solo invalida el límite pendiente |
 | Take profit | **USD fijo $700** (~1:2.8), ambas direcciones |
-| Ventana | **Entrada 09:30–14:00 ET** (08:30–13:00 Col) — `KillZoneEnd=1400`, alineado al `.md` canónico de Sergio (sesión 12; **revierte el 1100 de sesión 11**). `ForcedExit` 14:00 bloquea entradas tardías; posición abierta **corre a TP/SL** (G3, NO cierre total); NT8 aplana al cierre de sesión. **1 setup/día** |
+| Ventana | **Entrada 09:30–11:00 ET** (08:30–10:00 Col) — `KillZoneEnd=1100` (revisado sesión 11; sesión 6 fue 1400). `ForcedExit` 14:00 bloquea entradas tardías; posición abierta **corre a TP/SL** (G3, NO cierre total); NT8 aplana al cierre de sesión. **1 setup/día** |
+| Sesión datos | **Serie 15m fijada a `CME US Index Futures ETH`** (Globex 24h) por código (`SessionTemplateName`, Input, sesión 12) → el rango pre-apertura siempre tiene datos overnight sin depender de la plantilla del Strategy Analyzer |
 | Plan Apex | 50K · Trailing DD $2,500 · Profit goal $3,000 · Daily loss propio $400 |
 | Consistencia | 50% lun–vie (ningún día > 50% del profit acumulado). **No en código aún** (manual) |
 | MCP | **Node + TypeScript** · alcance **solo lectura + enable/disable** · corre en **localhost** |
@@ -70,14 +71,17 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ### 2026-06-06 — Sesión 12 (Claude Stream A en PC de Esteban / Spoke186)
 
-**Tema: realinear killzone al `.md` canónico + A13 (herramienta comparación Setup A vs B) + diagnóstico del backtest.**
+**Tema: fijar sesión ETH en código + A13 (herramienta comparación Setup A vs B) + diagnóstico del backtest.**
 
-- **Killzone revertido a 1400 (decisión operador):** el `.md` canónico de Sergio
-  (`estrategia_liquidity_sweep_fvg.md` línea 57) define la ventana **09:30–14:00 ET**. El `.cs` había
-  quedado en `KillZoneEnd=1100` (cambio de sesión 11). El operador pidió alinear al `.md` ("como lo
-  dejó Sergio") → `ApexNqIctStrategy.cs` línea 200 vuelve a **1400**. Regla del proyecto: el `.md`
-  canónico manda. **Esto supersede el 1100 de sesión 11** (§1 + A4/G2 actualizados). Recompilar (F5)
-  para que el default tome efecto en vivo.
+- **Sesión ETH fijada en código (decisión operador):** para que NT8 tome la plantilla de Globex 24h
+  de una y no haya que cambiarla a mano en el Strategy Analyzer. Nuevo Input `SessionTemplateName`
+  (default `"CME US Index Futures ETH"`); en `State.Configure` el `AddDataSeries` del 15m usa la
+  sobrecarga con `tradingHoursName`. Así la serie 15m **siempre** trae barras overnight → el fallback
+  del rango pre-apertura (`OnBarUpdate`, líneas ~272-298) arma aunque el 1m primario sea RTH. Soluciona
+  el 0-trades sin depender de la plantilla que elija el usuario. **Falta F5 para confirmar la sobrecarga
+  en NT8 8.1.7.1** (si la firma difiere → external-change).
+- **KillZoneEnd se queda en 1100** (09:30–11:00 ET, decisión operador sesión 11). *(En este turno
+  primero lo cambié a 1400 por malinterpretar "como lo dejó Sergio"; el operador corrigió: es 1100.)*
 - **A13 — herramienta lista (código):** extendido `backtest/analyze_backtest.py` para separar trades
   por **nombre de señal de entrada** (`Entry name` del export NT8): `LongFVG/ShortFVG` → **Setup A**,
   `LongSweep/ShortSweep` → **Setup B**. Nuevo bloque "Desglose por setup" al final del reporte
@@ -109,8 +113,7 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
     (`LongSweep/ShortSweep`). Correcto.
   - Añade `BMO.csproj`/`nuget.config` (build fuera de NT8) + `resultados/` (screenshots de Sergio).
 - **G2 revisado (operador):** `KillZoneEnd` **1400 → 1100** → ventana 09:30–11:00 ET (kill zone NY).
-  Revierte la decisión de sesión 6. Actualizado §1 + TAREAS A4/G2. **⚠️ Revertido en sesión 12 a 1400**
-  (alineación al `.md` canónico de Sergio); este 1100 quedó superado.
+  Revierte la decisión de sesión 6. Actualizado §1 + TAREAS A4/G2.
 - **Nuevas tareas (TAREAS §E):**
   - **Alan (Stream C):** C8 — bot Telegram con **señales** de entrada en vivo (dir/precio/setup/stop/target).
   - **Sergio:** B9 — activar bitácora Notion (token N11); A12 — exponer Setup B en `/setup`.

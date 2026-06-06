@@ -33,7 +33,7 @@
 | A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
 | A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
 | A3 Compilar en NT8 (F5) limpio | ✅ **confirmado** (Esteban, sesión 9: aparece en Strategy Analyzer = compiló limpio) | A2 |
-| A4 Ventana entrada | ✅ **`KillZoneEnd=1400`** (09:30–14:00 ET) — sesión 12 realineó al `.md` canónico de Sergio; revierte el 1100 de sesión 11 | A3 |
+| A4 Ventana entrada | ✅ **`KillZoneEnd=1100`** (09:30–11:00 ET, kill zone NY). Operador volvió a 11:00 (sesión 6 fue 1400) | A3 |
 | A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
 | A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
 | A7 Backtest Strategy Analyzer (NQ `NQ ##-##` 1m + 15m, 3–6 meses, Globex/24h) | 🚧 corre OK (sesión 10: rango pre-ap arma con ETH). Setup A daba ~0 trades (rango overnight muy ancho); Setup B (A11) genera más. Falta exportar + `analyze_backtest.py` | A3 |
@@ -87,7 +87,7 @@
 | # | Gap | Archivo | Estado |
 |---|-----|---------|--------|
 | G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | ✅ PR #14 |
-| G2 | Ventana entrada — **sesión 12: `KillZoneEnd=1400`** (09:30–14:00 ET), alineado al `.md` §3 canónico de Sergio. Revierte el 1100 de sesión 11 | `ApexNqIctStrategy.cs` (`KillZoneEnd=1400`) | ✅ alineado al `.md` |
+| G2 | Ventana entrada — **`KillZoneEnd=1100`** (09:30–11:00 ET, decisión operador sesión 11; sesión 6 fue 1400). `.md` §3 dice hasta 14:00 → gana la decisión del operador | `ApexNqIctStrategy.cs` (`KillZoneEnd=1100`) | ✅ decisión operador |
 | G3 | ForcedExit solo bloquea entradas; posición abierta corre a TP/SL (**intencional** — operador: "dejar que termine, 1 oportunidad/día"). NO cierra total pese a `.md` §11 | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
 | G4 | Liquidez = rango pre-apertura 1m hasta 9:30 ET (`.md` §4) | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto (impl. SECH) |
 
@@ -114,12 +114,12 @@ N6 (PC-LIVE) ─► B5, C4
 ---
 
 ## E. Acción inmediata (sesión 12)
-- **Esteban (Stream A):** correr A7 en Strategy Analyzer. ⚠️ **Clave para no sacar 0 trades:**
-  **template de sesión = `CME US Index Futures ETH`** (Globex 24h). Con RTH-only `preMarketReady` no
-  arma → 0 setups (ver auto-chequeo `[PRE-AP]` en NinjaScript Output). Instrumento **NQ** (`NQ ##-##`
-  o front month), serie primaria **1m**, `EnableSetupB=ON`, `KillZoneEnd=1400` (recompilar F5 para que
-  el default tome efecto). Pestaña **Trades → Export CSV** → `python analyze_backtest.py <csv>`: el
-  desglose A vs B (A13) sale solo. Luego A8 (tuning).
+- **Esteban (Stream A):** correr A7. **F5 primero** (sesión 12 metió el Input `SessionTemplateName`
+  default `CME US Index Futures ETH` → la serie 15m ya trae datos overnight desde el código; no hay que
+  cambiar la plantilla a mano). Instrumento **NQ** (`NQ ##-##` o front month), serie primaria **1m**,
+  `EnableSetupB=ON`, `KillZoneEnd=1100`. Auto-chequeo `[PRE-AP]` en NinjaScript Output (debe decir
+  `Range 1m` o `Range 15m fallback`, NO `SIN datos overnight`). Pestaña **Trades → Export CSV** →
+  `python analyze_backtest.py <csv>`: el desglose A vs B (A13) sale solo. Luego A8 (tuning).
 - **A13 herramienta lista** (sesión 12): `analyze_backtest.py` etiqueta por `Entry name` y compara
   A/B/combinado. Solo falta la data de A7.
 - **Sergio (Stream B + estrategia):** B9 — activar bitácora Notion (token N11, acceso BD, validar en Sim). A12 — exponer Setup B en `/setup`.
