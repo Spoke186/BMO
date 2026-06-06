@@ -60,8 +60,9 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 ### Guardas Apex en el código (estado)
 - ✅ Stop obligatorio · ✅ No DCA · ✅ 1 entrada/setup · ✅ Ventana horaria · ✅ Max daily loss
 - ✅ Cap riesgo/trade · ⚠️ Trailing DD = **proxy local** (Apex manda)
-- ⚠️ Consistencia 50%: **módulo C# existe** (`infra/DailyPnlTracker.cs`) pero **aún no integrado**
-  en `ApexNqIctStrategy.cs` (pendiente A5). También verificable post-backtest con `analyze_backtest.py`.
+- ⚠️ Consistencia 50%: **integrada en tiempo real** — `ApexNqIctStrategy.cs` usa `DailyPnlTracker`
+  (`RecordTrade` al cerrar, `WouldViolateConsistency(ProfitTargetUsd)` antes de armar). Solo activo en
+  `State.Realtime` (en backtest se valida con `analyze_backtest.py`). Falta probar en Sim. Apex = verdad oficial.
 
 ---
 
@@ -81,7 +82,12 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - **Decisión:** el agente "quant-analyst" de aitmpl.com es Python → NO se usa para escribir la
   estrategia (choca con C# LOCKED); su enfoque se aterrizó al helper propio en `/backtest/`.
 - **A2/A3 siguen pendientes:** NT8 estaba en mantenimiento; se compila/backtestea cuando vuelva.
-- **Git:** rebase de `stream-a` sobre `origin/main` (toma el merge de stream-b), push de `stream-a`.
+- **Git:** rebase de `stream-a` sobre `origin/main` (toma el merge de stream-b), push + PR #2 a `main`.
+- **A5 integrado:** tras ver el merge de stream-b, integré `DailyPnlTracker` en `ApexNqIctStrategy.cs`
+  (campos `pnlTracker`/`lastTradeCount`, init en `State.Realtime`, `RecordClosedTrades()` por barra,
+  guard de consistencia antes de `TryArmSetup`, `Save()` en `Terminated`). Solo activo en vivo para
+  no corromper el JSON ni colapsar días en backtest. Brace/paren balance OK. Actualizado PREFLIGHT
+  (3 .cs en `bin\Custom`) y CLAUDE.md.
 
 ### 2026-06-05 — Sesión 2 (Claude Stream B/C en PC de Sergio)
 
@@ -135,7 +141,8 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - [ ] Compilar `.cs` en NT8 (F5) — **bloqueado: NT8 en mantenimiento**. AddOn también en `bin\Custom\`.
 - [ ] Backtest Strategy Analyzer (3–6 meses NQ 5m) → correr `analyze_backtest.py` sobre el export.
 - [ ] Tuning displacement/FVG/pivotes (A4).
-- [ ] **Integrar `infra/DailyPnlTracker.cs` (de C/B) en la estrategia** → consistencia 50% real (A5).
+- [x] **Integrar `infra/DailyPnlTracker.cs` en la estrategia** → consistencia 50% en tiempo real (A5).
+      Falta validar en Sim que `RecordTrade`/`WouldViolateConsistency` disparan bien.
 - [ ] Fase 2: TP "siguiente liquidez".
 
 ### Stream B — MCP & Bridge

@@ -6,11 +6,15 @@
 
 ## 0. Antes de F5
 
-- [ ] Copiar **ambos** `.cs` a `Documents\NinjaTrader 8\bin\Custom\`:
+- [ ] Copiar los **tres** `.cs` a `Documents\NinjaTrader 8\bin\Custom\`:
   - `ApexNqIctStrategy.cs`  → `bin\Custom\Strategies\`
   - `ntaddon\ApexBridgeAddOn.cs` → `bin\Custom\AddOns\`
-  - **Motivo:** la estrategia referencia `ApexBridgeState` (definido en el AddOn). Si el AddOn no
-    está, F5 falla con "ApexBridgeState no existe". Los dos compilan en la MISMA assembly Custom.
+  - `infra\DailyPnlTracker.cs` → `bin\Custom\Strategies\` (namespace `...Strategies`)
+  - **Motivo:** la estrategia referencia `ApexBridgeState` (del AddOn) **y** `DailyPnlTracker`
+    (consistencia 50%). Si falta alguno, F5 falla por símbolo inexistente. Los tres compilan en la
+    MISMA assembly Custom.
+  - Nota: `DailyPnlTracker` solo se activa en **tiempo real** (Sim/live), no en backtest. En backtest
+    la consistencia 50% la valida `analyze_backtest.py`.
 
 ## 1. A2 — Compilar (F5)
 
