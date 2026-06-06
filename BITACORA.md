@@ -68,6 +68,26 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 4 (Claude Stream A en PC de Esteban / Spoke186)
+- **PR #6 (stream-c de ptala611-oss) revisado y mergeado a `main`:** `MarketCalendar.cs` (C1b),
+  `TelegramAlerts.cs` (C3 skeleton), `.env.example` Telegram. Sin secretos (solo `CHANGE_ME`). CLEAN.
+- **C6 hecho — `MarketCalendar.cs` integrado en la estrategia:** en `OnBarUpdate`:
+  - Cierre forzado ahora = `Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]))` →
+    media sesión CME cierra a **12:45 ET** en lugar de 15:55.
+  - `MarketCalendar.ShouldSkipToday(Time[0])` → no arma setups en festivo CME / fin de semana
+    (incl. cancela límite vivo). **Decisión:** uso `Time[0]` (barra, gráfico en ET) y NO
+    `DateTime.UtcNow` como sugería el comentario de `MarketCalendar.cs`, para que el backtest
+    también respete el calendario y por consistencia con la lógica de kill zone existente.
+- **C3 wiring hecho — `TelegramAlerts` cableado al ciclo de la estrategia:** campo `alerts`,
+  init en `State.Realtime` (BotStart), BotStop en `Terminated`, TradeOpened en `OnExecutionUpdate`,
+  TradeClosed en `RecordClosedTrades`, DailyLossWarning en trailing-DD/daily-loss, ConsistencyWarning
+  en el skip de consistencia. **Inerte sin token** (la clase se auto-deshabilita si faltan las env
+  vars) → se activa solo al poner **N8**. Heartbeat timer NO cableado (opcional, evita `System.Timers`).
+- **No compilado aún (NT8):** A2 sigue pendiente; revisado estáticamente (mismo namespace para las
+  3 clases, `Math`/`Instrument.FullName`/enum `Msg` válidos). Validar en F5 + Sim cuando haya NT8.
+- **Pendientes que siguen bloqueados:** A2/A3/A4 (NT8), A5 validar Sim, B3/B5/B6/N4 (Apex N1),
+  C4 (N6), encender C3 (N8). A6 es fase 2.
+
 ### 2026-06-05 — Sesión 3 (Claude Stream A en PC de Esteban / Spoke186)
 - Branch `stream-a` creado.
 - **Review compile (pre-A2):** revisada `ApexNqIctStrategy.cs` + `ntaddon/ApexBridgeAddOn.cs`
@@ -88,6 +108,45 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
   guard de consistencia antes de `TryArmSetup`, `Save()` en `Terminated`). Solo activo en vivo para
   no corromper el JSON ni colapsar días en backtest. Brace/paren balance OK. Actualizado PREFLIGHT
   (3 .cs en `bin\Custom`) y CLAUDE.md.
+- **PR #4 (stream-b-v2 de Sergio) revisado y mergeado a `main`:** mock test MCP, README setup, VPS
+  research. Sin secretos reales (solo placeholder). CLEAN, sin conflictos.
+- **B3 (env) + fix instrumento:** AddOn ahora lee `BRIDGE_TOKEN` / `APEX_ACCOUNT` / `APEX_INSTRUMENT`
+  del entorno del SO (defaults Sim101 / NQ). **Corregido `InstrumentName` MNQ→NQ** (contradecía la
+  decisión LOCKED NQ mini). `.env.example` documenta las env vars + `setx`. (Edición cruzada a Stream B
+  autorizada por el operador; avisar a Sergio.)
+- **MCP validado local:** `npm install` en `mcp/` + `node mcp/test-tools.mjs` → **6/6 OK** en PC de Esteban.
+- **N9 decidido:** repo sigue **PÚBLICO**.
+
+### 2026-06-05 — Sesión 2 (Claude Stream C en PC de ptala611-oss)
+
+- **C6 completo:** integrado `MarketCalendar.cs` en `ApexNqIctStrategy.cs`.
+  - Guard `ShouldSkipToday(Time[0])` añadido antes de `TryArmSetup()`: festivos CME 2026/2027 y
+    fines de semana no arman setups. Usa `Time[0]` (ya en ET en NT8) en lugar de `DateTime.UtcNow`
+    para que funcione en backtest histórico igual que en tiempo real.
+  - `BotForceCloseTime(Time[0])` reemplaza el hardcode `ForcedExit * 100`: en medias sesiones
+    el cierre forzado pasa a 12:45 ET (en lugar de 15:55). Se toma el `Math.Min` de ambos para
+    respetar también el parámetro del usuario si lo ajusta a algo más temprano.
+  - `ManageArmedSetup` no se toca: si hay orden viva en un festivo (borde raro), sigue
+    expirando/cancelando normalmente.
+- **TAREAS.md:** C6 marcado ✅.
+- **Branch:** `stream-c`. PR a `main` listo.
+
+### 2026-06-05 — Sesión 1 (Claude Stream C en PC de ptala611-oss)
+
+- **Sync inicial:** pull desde `origin/main` (15 commits nuevos de streams A y B). Revisado estado completo.
+- **Gap detectado:** `infra/marketCalendar.ts` cubre el MCP (TypeScript) pero la estrategia NinjaScript
+  no tenía guardia de festivos CME. Los viernes y festivos, `OnBarUpdate` evaluaría setups en mercado cerrado.
+- **C1b completo:** `infra/MarketCalendar.cs` — versión C# de MarketCalendar para NinjaScript.
+  Festivos CME 2026/2027 + medias sesiones. API: `ShouldSkipToday()`, `IsHoliday()`, `IsHalfSession()`,
+  `BotForceCloseTime()` (1555 normal / 1245 media sesión). Stream A debe integrar en `OnBarUpdate`.
+- **C3 parcial:** `alerts/TelegramAlerts.cs` — módulo de alertas Telegram completo, activable sin cambios
+  de código al pasar N8. Lee `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` del entorno. Mensajes tipados:
+  BotStart/Stop, TradeOpened/Closed, DailyLossWarning, ConsistencyWarning, StrategyError, Heartbeat.
+  Fire-and-forget via `Task.Run`. Token nunca en código. Bloqueado solo el encendido (espera N8).
+- **`.env.example` actualizado:** añadidas `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` con instrucciones
+  para obtener token (@BotFather) y chat id (getUpdates).
+- **TAREAS.md actualizado:** C1b/C3/C6 añadidas; estados sincronizados con lo que hicieron A y B.
+- **Branch:** `stream-c`. PR pendiente a `main`.
 
 ### 2026-06-05 — Sesión 3 (Claude Stream B/C en PC de Sergio — continuación)
 

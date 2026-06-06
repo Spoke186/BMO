@@ -43,7 +43,10 @@ ICT continuación de tendencia — **temporalidades: 15m sesgo/FVG, 1m gatillo**
 2. ~~Persistencia P&L → regla consistencia 50% real~~ → hecho en tiempo real (`DailyPnlTracker`).
    Falta validar en Sim que `RecordTrade`/`WouldViolateConsistency` disparan bien.
 3. TP "siguiente liquidez" (fase 2).
-4. Alertas Telegram.
+4. ~~Alertas Telegram~~ → `alerts/TelegramAlerts.cs` + wiring en estrategia hecho; inerte sin token,
+   se activa al poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (N8). Heartbeat timer opcional sin cablear.
+5. Calendario CME (`infra/MarketCalendar.cs`) integrado: skip festivo/finde + cierre 12:45 media sesión.
+   **Mantenimiento:** fechas hardcoded 2026–2027; actualizar cada diciembre.
 
 ## Reglas de trabajo
 - Si una decisión técnica contradice este archivo, **pregunta antes de avanzar**.

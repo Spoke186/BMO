@@ -41,13 +41,18 @@ namespace NinjaTrader.NinjaScript.AddOns
 
 	public class ApexBridgeAddOn : AddOnBase
 	{
-		// TODO(Apex): confirmar nombre EXACTO de la cuenta en NT8 (ej "APEX-XXXXX").
-		private const string AccountName = "Sim101";        // <-- cambiar al conectar Apex
-		// TODO(Apex): confirmar simbolo operado (NQ o MNQ + contrato vigente).
-		private const string InstrumentName = "MNQ";        // <-- micro por defecto
-		private const int    Port  = 8731;
-		// TODO(seguridad): mover a variable de entorno, no hardcodear en repo.
-		private const string Token = "CHANGE_ME_LOCAL_TOKEN";
+		// B3: cuenta/simbolo/token vienen de variables de entorno del SO (NT8 las hereda).
+		// Defaults sirven para Sim out-of-the-box; al conectar Apex, el operador exporta
+		// APEX_ACCOUNT (nombre real ej "APEX-XXXXX") y deja APEX_INSTRUMENT en NQ.
+		private static readonly string AccountName    =
+			Environment.GetEnvironmentVariable("APEX_ACCOUNT")    ?? "Sim101";
+		// LOCKED: NQ mini (el bracket USD fijo lo implica; MNQ no sirve con esos USD).
+		private static readonly string InstrumentName =
+			Environment.GetEnvironmentVariable("APEX_INSTRUMENT") ?? "NQ";
+		private const int Port = 8731;
+		// Seguridad: token desde env BRIDGE_TOKEN (mismo valor que usa el MCP). Sin hardcode real.
+		private static readonly string Token =
+			Environment.GetEnvironmentVariable("BRIDGE_TOKEN")    ?? "CHANGE_ME_LOCAL_TOKEN";
 
 		private HttpListener listener;
 		private Thread       listenerThread;

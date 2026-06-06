@@ -141,6 +141,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// Consistencia 50% Apex (solo tiempo real; en backtest validar con analyze_backtest.py)
 		private DailyPnlTracker pnlTracker;
 		private int lastTradeCount;
+
+		// Alertas Telegram (Stream C, alerts/TelegramAlerts.cs). Se auto-deshabilita si no hay
+		// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en el entorno (N8 pendiente): wiring inerte
+		// hasta que el operador ponga el token. Solo se instancia en vivo, igual que pnlTracker.
+		private TelegramAlerts alerts;
 		#endregion
 
 		protected override void OnStateChange()
@@ -192,9 +197,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 				// DateTime.Now no corresponde a la barra y persistir JSON seria incorrecto.
 				pnlTracker     = new DailyPnlTracker();
 				lastTradeCount = SystemPerformance.AllTrades.Count;
+
+				alerts = new TelegramAlerts();
+				alerts.SendAsync(TelegramAlerts.Msg.BotStart, Instrument.FullName);
 			}
 			else if (State == State.Terminated)
 			{
+				alerts?.SendAsync(TelegramAlerts.Msg.BotStop);
 				pnlTracker?.Save();
 			}
 		}
@@ -222,12 +231,26 @@ namespace NinjaTrader.NinjaScript.Strategies
 			UpdateRiskGuards();
 			RecordClosedTrades();
 
-			if (ToTime(Time[0]) >= ForcedExit * 100)
+			// MarketCalendar adelanta el cierre en medias sesiones CME (12:45 ET).
+			int forcedExitToday = Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]));
+			if (ToTime(Time[0]) >= forcedExitToday * 100)
 			{
 				// Bloquear nuevas entradas pasada la ventana.
 				// Si hay posicion activa, dejar correr hasta TP o SL (1 oportunidad/dia).
 				setupState = 0;
 				sweepState15m = 0;
+				return;
+			}
+
+			// Festivo CME completo o fin de semana (MarketCalendar, C6): no armar setups.
+			// Cancela cualquier limite que hubiera quedado vivo de una sesion anterior.
+			if (MarketCalendar.ShouldSkipToday(Time[0]))
+			{
+				if (setupState == 1)
+				{
+					CancelEntry();
+					setupState = 0;
+				}
 				return;
 			}
 
@@ -518,7 +541,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if ((accountHighWater - equity) >= TrailingDrawdown)
 			{
 				if (!tradingDisabled)
+				{
 					Print($"[RIESGO] Trailing DD proxy alcanzado ({TrailingDrawdown:C}). Trading deshabilitado.");
+					alerts?.SendAsync(TelegramAlerts.Msg.DailyLossWarning,
+						$"Trailing DD proxy {TrailingDrawdown:C} alcanzado. Trading off.");
+				}
 				tradingDisabled = true;
 			}
 
@@ -527,7 +554,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (sessionPnl <= -MaxDailyLoss)
 			{
 				if (!tradingDisabled)
+				{
 					Print($"[RIESGO] Max daily loss alcanzado ({sessionPnl:C}). Trading deshabilitado hoy.");
+					alerts?.SendAsync(TelegramAlerts.Msg.DailyLossWarning,
+						$"Max daily loss {sessionPnl:C}. Trading off hoy.");
+				}
 				tradingDisabled = true;
 			}
 
@@ -543,7 +574,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (pnlTracker == null) return;
 			int total = SystemPerformance.AllTrades.Count;
 			for (int i = lastTradeCount; i < total; i++)
-				pnlTracker.RecordTrade(SystemPerformance.AllTrades[i].ProfitCurrency);
+			{
+				double tradePnl = SystemPerformance.AllTrades[i].ProfitCurrency;
+				pnlTracker.RecordTrade(tradePnl);
+				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+			}
 			lastTradeCount = total;
 		}
 		#endregion
@@ -553,6 +588,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			list.Add(v);
 			if (list.Count > 50) list.RemoveAt(0);
+		}
+
+		private void CancelEntry()
+		{
+			if (entryOrder != null && (entryOrder.OrderState == OrderState.Working
+			                        || entryOrder.OrderState == OrderState.Accepted))
+				CancelOrder(entryOrder);
+			entryOrder = null;
 		}
 
 		private void FlattenAndCancel(string reason)
@@ -587,6 +630,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				tradedToday = true;
 				setupState  = 0;
+				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
+					$"{(execution.Order.Name == "LongFVG" ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
 			}
 		}
 		#endregion
