@@ -124,9 +124,9 @@ Arrancar en paralelo: A compila+backtest, B scaffold AddOn+MCP, C calendar+alert
 ## Estado global (actualizar al mergear)
 | Stream | Branch | Último hito | Estado |
 |--------|--------|-------------|--------|
-| A (Spoke186) | stream-a | Estrategia base + cap riesgo + toggle MCP | 🚧 falta compilar/backtest |
-| B (2317SECH) | stream-b | Scaffold AddOn C# + MCP Node TS escritos | 🚧 falta datos Apex + compilar/probar |
-| C (ptala611-oss) | stream-c | — | ⬜ no iniciado |
+| A (Spoke186) | stream-a | Estrategia **15m/1m** (Liquidity Sweep+FVG, de SECH) + 2 fixes compile (CS0234/CS1501) | 🚧 falta F5 + backtest |
+| B (2317SECH) | stream-b | Entregó la estrategia + `estrategia_liquidity_sweep_fvg.md`; MCP/AddOn scaffold | 🚧 build/mock + datos Apex |
+| C (ptala611-oss) | stream-c | Calendar + consistencia + alertas + runbook + C6 integrado | ✅ base hecha; falta token N8 / VPS |
 
 > **Integración A↔B:** `ApexNqIctStrategy.cs` referencia `ApexBridgeState` (en el AddOn).
 > Ambos `.cs` deben estar en `bin\Custom\` antes de compilar, o falla por símbolo faltante.
