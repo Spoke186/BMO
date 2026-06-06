@@ -119,7 +119,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// Son los niveles de liquidez que la barrida debe perforar y recuperar.
 		private double preMarketHigh;
 		private double preMarketLow;
-		private bool   preMarketReady; // true desde que cierra la ventana pre-apertura
+		private bool   preMarketReady;    // true desde que cierra la ventana pre-apertura
+		private bool   preMarketAttempted; // fallback 15m intentado (corre 1 vez por sesion)
 
 		// Maquina de estados 15m: buscar barrida → CHoCH + FVG
 		// 0 = buscando barrida, 1 = barrida detectada, esperando CHoCH+FVG
@@ -258,7 +259,34 @@ namespace NinjaTrader.NinjaScript.Strategies
 				else if (preMarketHigh > double.MinValue)
 				{
 					preMarketReady = true;
-					Print($"[PRE-AP] Range [{preMarketLow:F2}, {preMarketHigh:F2}]");
+					Print($"[PRE-AP] Range 1m [{preMarketLow:F2}, {preMarketHigh:F2}]");
+				}
+				else if (!preMarketAttempted)
+				{
+					// Sin barras 1m nocturnas (plantilla RTH). Intento unico: escanear
+					// la serie 15m hacia atras buscando barras previas a las 9:30 ET.
+					// Si el grafico es ETH de 15m, esto reconstruye el rango overnight.
+					preMarketAttempted = true;
+					int scan = Math.Min(CurrentBars[1], 24); // hasta 6h de barras 15m
+					for (int i = 0; i < scan; i++)
+					{
+						if (ToTime(Times[1][i]) < KillZoneStart * 100)
+						{
+							preMarketHigh = Math.Max(preMarketHigh, Highs[1][i]);
+							preMarketLow  = Math.Min(preMarketLow,  Lows[1][i]);
+						}
+					}
+					if (preMarketHigh > double.MinValue)
+					{
+						preMarketReady = true;
+						Print($"[PRE-AP] Range 15m fallback [{preMarketLow:F2}, {preMarketHigh:F2}]");
+					}
+					else
+					{
+						// Ambas series son RTH: sin niveles de liquidez para hoy.
+						// Usar plantilla ETH (Globex 24h) en Strategy Analyzer / grafico live.
+						Print("[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.");
+					}
 				}
 			}
 
@@ -563,6 +591,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			preMarketHigh      = double.MinValue;
 			preMarketLow       = double.MaxValue;
 			preMarketReady     = false;
+			preMarketAttempted = false;
 			sessionStartCumPnl = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
 		}
 
