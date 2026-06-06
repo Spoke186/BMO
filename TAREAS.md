@@ -53,6 +53,11 @@
 | B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | ⬜ | A3 |
 | B8 Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring) | ✅ PR #16; inerte sin `NOTION_API_KEY` (N11) | — |
 
+> **Handoff Sergio (sesión 7):** `main` limpio, contrato A↔B vivo (`ApexBridgeState.TradingEnabled`,
+> ya consultado por la estrategia). **Puede avanzar YA con mock (sin NT8/Apex):** B6 (definir contrato
+> real de `/trades/today`) y B7 (tool de monitoreo del setup). ⚠️ Si el Sim corre **MNQ**, exportar
+> `APEX_INSTRUMENT=MNQ` o `/position` del AddOn filtra mal (`StartsWith("NQ")`, línea 196).
+
 ### Stream C — Infra, Riesgo & Ops  (dueño: `/infra`, `/utils`, `/alerts`)
 | Tarea | Estado | Depende de |
 |-------|--------|-----------|
@@ -63,7 +68,7 @@
 | C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅; setup espera N6 | N6 |
 | C5 Runbook operación | ✅ `infra/RUNBOOK.md` | — |
 | C6 Integrar `MarketCalendar.cs` en estrategia | ✅ hook en `OnBarUpdate` | C1b |
-| C7 Coherencia cierre: `.md` 14:00 ET vs media sesión CME 12:45 (`MarketCalendar`) | ⬜ | A5 |
+| C7 Coherencia cierre: `.md` 14:00 ET vs media sesión CME 12:45 (`MarketCalendar`) | ✅ coherente: `forcedExit` y el 12:45 de media sesión **solo bloquean entradas**, nunca aplanan (líneas 269–277); posición corre a TP/SL (G3). NT8 aplana en cierre de sesión | A5 | A5 |
 
 ---
 

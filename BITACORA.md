@@ -19,12 +19,12 @@ personas, cada una con un Claude Code en su PC. Repo: **https://github.com/Spoke
 |------|----------|
 | Plataforma | **NinjaTrader 8 / NinjaScript (C#)**. Descartado: Python+API, TradingView+PickMyTrade |
 | Mercado / contrato | **2 contratos NQ mini** (el bracket USD fijo lo implica; MNQ no sirve con esos USD) |
-| Timeframes | Tendencia 15m · ejecución 5m |
+| Timeframes | **Sesgo/barrida/CHoCH/FVG 15m · gatillo (confirmación) 1m**. Serie primaria = **1m**; 15m por `AddDataSeries` |
 | Tendencia (sesgo) | Estructura **HH/HL** por pivotes fractales (fuerza 3 en 15m) |
-| Entrada | Sweep contra-tendencia → displacement (proxy ATR ≥1.5×) → **FVG** → límite en **fill completo** del gap, a favor de tendencia |
+| Entrada | Sweep rango pre-apertura → CHoCH + displacement (cuerpo ≥1.5×ATR) → **FVG 15m** → retroceso al FVG + **confirmación 1m** (rechazo o mini-CHoCH) → **mercado** al cierre 1m, a favor de tendencia |
 | Stop | **USD fijo $250** (`CalculationMode.Currency`). El extremo del sweep solo invalida el límite pendiente |
 | Take profit | **USD fijo $700** (~1:2.8), ambas direcciones |
-| Ventana | **NY Kill Zone 8:30–11:00 ET**, cierre forzado 15:55 ET, **1 setup/día** |
+| Ventana | **Ejecución 09:30–14:00 ET** (08:30–13:00 Col). A 14:00 ET **deja de abrir**; posición abierta **corre a TP/SL** (operador G3, NO cierre total). NT8 aplana al cierre de sesión (`IsExitOnSessionCloseStrategy=true`). **1 setup/día** |
 | Plan Apex | 50K · Trailing DD $2,500 · Profit goal $3,000 · Daily loss propio $400 |
 | Consistencia | 50% lun–vie (ningún día > 50% del profit acumulado). **No en código aún** (manual) |
 | MCP | **Node + TypeScript** · alcance **solo lectura + enable/disable** · corre en **localhost** |
@@ -59,7 +59,7 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ### Guardas Apex en el código (estado)
 - ✅ Stop obligatorio · ✅ No DCA · ✅ 1 entrada/setup · ✅ Ventana horaria · ✅ Max daily loss
-- ✅ Cap riesgo/trade · ⚠️ Trailing DD = **proxy local** (Apex manda)
+- ⚠️ Trailing DD = **proxy local** (Apex manda). *(El antiguo cap riesgo/trade fue removido: el stop es USD fijo $250.)*
 - ⚠️ Consistencia 50%: **integrada en tiempo real** — `ApexNqIctStrategy.cs` usa `DailyPnlTracker`
   (`RecordTrade` al cerrar, `WouldViolateConsistency(ProfitTargetUsd)` antes de armar). Solo activo en
   `State.Realtime` (en backtest se valida con `analyze_backtest.py`). Falta probar en Sim. Apex = verdad oficial.
@@ -67,6 +67,40 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 ---
 
 ## 3. Cronología
+
+### 2026-06-06 — Sesión 7 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: auditoría lógica `.cs` vs `.md`, reconciliar docs, mergear PR #17 y dejar `main` listo para Stream B (Sergio).**
+
+- **Auditoría `ApexNqIctStrategy.cs` vs `estrategia_liquidity_sweep_fvg.md` (paso a paso):** el código
+  implementa el `.md` con fidelidad. **Sin bugs que rompan la lógica.** Hallazgos:
+  - 🔴 **Bloqueo de backtest (dato, no código):** con datos **RTH-only**, la ventana pre-apertura queda
+    vacía → `preMarketReady` nunca pasa a true → **cero setups** (líneas 251–263). A7 OBLIGA template
+    **Globex/24h con datos overnight**. Ya estaba en PREFLIGHT; reconfirmado en código.
+  - 🟡 CHoCH usa el último pivote 15m (rezagado `SwingStrength15m`) → puede tomar un nivel viejo.
+    Item de **tuning A8**, no bug.
+  - 🟡 Pivotes sin dedup (`AddCapped`) → ruido menor en HH/HL. Tuning.
+  - Stop = USD fijo $250 (no estructural); el extremo del sweep solo invalida el setup pendiente
+    (`fvgInvalidPrice`). Coherente con la decisión del operador.
+- **C7 resuelto (era ⬜):** `forcedExit` y el cierre 12:45 de media sesión CME **solo bloquean
+  entradas**, nunca aplanan (líneas 269–277). La posición corre a TP/SL (G3); NT8 la aplana en el
+  cierre de sesión (`IsExitOnSessionCloseStrategy=true`, `ExitOnSessionCloseSeconds=60`). Sin riesgo
+  overnight. Coherente con G3.
+- **Docs reconciliados (decisión operador: "alinear todo"):**
+  - `BITACORA §1` tabla LOCKED (estaba vieja): timeframes 15m/**1m** (era 5m), entrada real
+    (sweep→CHoCH→FVG→confirmación 1m, era "límite fill completo"), ventana **09:30–14:00 + run-to-TP**
+    (era 8:30–11:00 + cierre 15:55), quitado "cap riesgo/trade" (removido; el stop es USD fijo).
+  - `estrategia_liquidity_sweep_fvg.md` §3: **nota de override** del operador (G3) — el bot NO aplana
+    a 14:00, deja correr a TP/SL. NO se borró la regla de SECH; solo se marcó la excepción.
+  - `TAREAS`: C7 marcado ✅.
+- **PR #17 revisado y mergeado a `main`:** único cambio de código = `KillZoneEnd 1100→1400` (G2,
+  decisión operador). G3/G4/Notion intactos de SECH (#16). Verificado que alinea antes de aceptar.
+- **Handoff Stream B (Sergio):** `main` limpio, contrato A↔B vivo (`ApexBridgeState.TradingEnabled`,
+  la estrategia ya lo consulta en `TryDetectSetup15m`). Sergio puede avanzar **YA con mock** (sin
+  NT8/Apex): **B6** (contrato real de `/trades/today`) y **B7** (tool de monitoreo del estado del
+  setup: sweep/CHoCH/FVG/armado). ⚠️ Si el Sim corre **MNQ** (no NQ), exportar `APEX_INSTRUMENT=MNQ`
+  o el `/position` del AddOn filtra mal (`StartsWith("NQ")`, línea 196).
+- **Pendiente operador:** A3 (F5 + backtest con datos overnight), N1 Apex, N6 PC-LIVE, N10 valor punto.
 
 ### 2026-06-06 — Sesión 6 (Claude Stream A en PC de Esteban / Spoke186)
 

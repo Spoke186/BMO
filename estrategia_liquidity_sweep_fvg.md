@@ -59,6 +59,8 @@ distancia_target_puntos = 700 USD / (valor_punto * 2 contratos)
 
 > El FVG NO tiene que aparecer media hora después. Se entra cuando el setup completo se forma, sea pronto o tarde dentro de la ventana.
 
+> **Nota de implementación (operador, sesión 6 — G3):** en el bot, a las 14:00 ET el sistema **deja de ABRIR** entradas, pero una posición ya abierta **NO se cierra**: corre hasta su TP o SL (1 oportunidad/día). Si sigue viva, NinjaTrader la aplana en el **cierre de sesión** (`IsExitOnSessionCloseStrategy`, ~16:00 ET). El "Cerrar todo" de esta tabla y de §11 es la regla discrecional; la decisión automatizada es dejar correr. Para un cierre duro a 14:00 habría que reintroducir un flatten explícito.
+
 ---
 
 ## 4. Paso 1 — Definir el sesgo del día (antes de 08:30)
