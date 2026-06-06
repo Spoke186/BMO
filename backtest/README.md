@@ -19,7 +19,7 @@ trailing DD y consistencia en su servidor con high-water intradía. Esto es para
 **tunear (A4) y vigilar (A5)**, no es la verdad oficial.
 
 ## Cómo exportar los trades desde NT8
-1. Strategy Analyzer → corre el backtest (NQ 5m, 3–6 meses).
+1. Strategy Analyzer → corre el backtest (NQ **1m** primaria, 3–6 meses, sesión **Globex/24h**).
 2. Pestaña **Trades** (no "Summary").
 3. Click derecho en la grilla → **Export** → CSV (o Excel y "Guardar como CSV").
 4. Guarda el archivo, ej `trades_nq_q1.csv`.
