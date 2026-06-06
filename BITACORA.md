@@ -42,22 +42,46 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 | Archivo | Stream | Estado |
 |---------|--------|--------|
-| `ApexNqIctStrategy.cs` | A | Estrategia ICT completa + guardas Apex + toggle MCP. 🚧 sin compilar/backtest |
+| `ApexNqIctStrategy.cs` | A | Estrategia ICT completa + guardas Apex + toggle MCP. ✅ revisado (compila); 🚧 falta F5/backtest en NT8 |
+| `backtest/analyze_backtest.py` (+ test + README) | A | Analizador de backtest stdlib: PF, max DD, Sharpe, OOS, Monte Carlo, reglas Apex + consistencia 50%. ✅ 8 tests OK |
+| `backtest/PREFLIGHT.md` | A | Checklist F5 + Strategy Analyzer + gotchas (timezone ET, primario 5m, stop tight) |
 | `ntaddon/ApexBridgeAddOn.cs` | B | AddOn HTTP (account/position/trades/enable/disable). 🚧 sin compilar/probar |
-| `mcp/` (package.json, tsconfig, src/index.ts, README) | B | MCP server Node TS, 5 tools. 🚧 sin probar |
+| `mcp/` (+ `dist/index.js`) | B | MCP server Node TS, **6 tools** (+`check_market`). ✅ build limpio |
+| `.mcp.json` + `.env.example` | B | Registro MCP + plantilla env |
+| `infra/marketCalendar.ts` | C (por B) | Festivos/medias sesiones CME 2026/27 + `getMarketStatus()`. ✅ |
+| `infra/DailyPnlTracker.cs` | C (por B) | Consistencia 50% Apex, persiste JSON. **API lista para que A la integre (A5)**. ✅ |
+| `infra/RUNBOOK.md` | C (por B) | Runbook operación (pre/durante/post, emergencias). ✅ |
 | `CLAUDE.md` | — | Contexto del proyecto |
 | `PLAN.md` | — | División en 3 streams + coordinación git |
 | `README.md` | — | Instalación NT8, params, reglas Apex |
 | `BITACORA.md` | — | Este archivo |
-| `.gitignore` | — | Secretos/build/node ignorados |
+| `.gitignore` | — | Secretos/build/node/csv ignorados |
 
 ### Guardas Apex en el código (estado)
 - ✅ Stop obligatorio · ✅ No DCA · ✅ 1 entrada/setup · ✅ Ventana horaria · ✅ Max daily loss
-- ✅ Cap riesgo/trade · ⚠️ Trailing DD = **proxy local** (Apex manda) · ❌ Consistencia 50% (manual)
+- ✅ Cap riesgo/trade · ⚠️ Trailing DD = **proxy local** (Apex manda)
+- ⚠️ Consistencia 50%: **módulo C# existe** (`infra/DailyPnlTracker.cs`) pero **aún no integrado**
+  en `ApexNqIctStrategy.cs` (pendiente A5). También verificable post-backtest con `analyze_backtest.py`.
 
 ---
 
 ## 3. Cronología
+
+### 2026-06-05 — Sesión 3 (Claude Stream A en PC de Esteban / Spoke186)
+- Branch `stream-a` creado.
+- **Review compile (pre-A2):** revisada `ApexNqIctStrategy.cs` + `ntaddon/ApexBridgeAddOn.cs`
+  línea por línea contra API NT8. Verdict: **compila** (`ApexBridgeState.TradingEnabled` resuelve,
+  todas las llamadas NT8 OK). Línea a vigilar: `ATR(BarsArray[0],14)` → fallback `ATR(14)`.
+- **`backtest/PREFLIGHT.md`:** pasos F5 + Strategy Analyzer + 3 gotchas (timezone ET vs Colombia,
+  primario DEBE ser 5m, stop $250 sobre 2 NQ ≈ 6.25 pts es ajustado → vigilar win rate).
+- **`backtest/analyze_backtest.py`** (+ test + README): analizador de backtest **stdlib puro**
+  (sin pandas/numpy). Lee export de trades NT8, calcula PF, max DD, Sharpe, out-of-sample
+  (overfitting), Monte Carlo (riesgo de secuencia / prob. tocar trailing DD) y reglas Apex
+  (incl. consistencia 50%). 8 tests OK. Scoped a `/backtest/`, **no toca el stack C#**.
+- **Decisión:** el agente "quant-analyst" de aitmpl.com es Python → NO se usa para escribir la
+  estrategia (choca con C# LOCKED); su enfoque se aterrizó al helper propio en `/backtest/`.
+- **A2/A3 siguen pendientes:** NT8 estaba en mantenimiento; se compila/backtestea cuando vuelva.
+- **Git:** rebase de `stream-a` sobre `origin/main` (toma el merge de stream-b), push de `stream-a`.
 
 ### 2026-06-05 — Sesión 2 (Claude Stream B/C en PC de Sergio)
 
@@ -106,23 +130,26 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - [ ] (Después) Token Telegram para alertas.
 
 ### Stream A — Estrategia & Backtest
-- [ ] Compilar `.cs` en NT8 (F5). Recordar: el AddOn debe estar también en `bin\Custom\` (la
-      estrategia referencia `ApexBridgeState`).
-- [ ] Backtest Strategy Analyzer (3–6 meses NQ 5m), tuning de displacement/FVG/pivotes.
-- [ ] Implementar consistencia 50% lun–vie con persistencia P&L entre días.
+- [x] Review compile de `.cs` (verdict: compila). Ver `backtest/PREFLIGHT.md`.
+- [x] Analizador de backtest `backtest/analyze_backtest.py` (+ tests).
+- [ ] Compilar `.cs` en NT8 (F5) — **bloqueado: NT8 en mantenimiento**. AddOn también en `bin\Custom\`.
+- [ ] Backtest Strategy Analyzer (3–6 meses NQ 5m) → correr `analyze_backtest.py` sobre el export.
+- [ ] Tuning displacement/FVG/pivotes (A4).
+- [ ] **Integrar `infra/DailyPnlTracker.cs` (de C/B) en la estrategia** → consistencia 50% real (A5).
 - [ ] Fase 2: TP "siguiente liquidez".
 
 ### Stream B — MCP & Bridge
 - [ ] Rellenar TODOs del AddOn: `AccountName`, `InstrumentName`, `Token` (a variable de entorno).
-- [ ] `npm install` + `npm run build` en `mcp/`, registrar en `.mcp.json`.
-- [ ] Probar loop completo: Claude → MCP → AddOn → NT8 (en Sim).
+- [x] `npm install` + `npm run build` en `mcp/`, registrar en `.mcp.json` (B4). MCP v0.2.0, 6 tools.
+- [ ] Probar loop completo: Claude → MCP → AddOn → NT8 (en Sim) — bloqueado N6 + A2.
 - [ ] `get_today_trades` real (integrar con Stream A/C).
 
-### Stream C — Infra, Riesgo & Ops
-- [ ] `market_calendar` (festivos CME).
-- [ ] Módulo consistencia 50% (lógica + persistencia) para que A lo integre.
-- [ ] Alertas Telegram (trade, error, daily loss, heartbeat 5min).
-- [ ] VPS opcional (Windows, baja latencia CME) + runbook operación.
+### Stream C — Infra, Riesgo & Ops (hecho por Stream B esta sesión)
+- [x] `market_calendar` (festivos CME) → `infra/marketCalendar.ts` (C1).
+- [x] Módulo consistencia 50% (lógica + persistencia) → `infra/DailyPnlTracker.cs` (C2); falta que A lo integre.
+- [x] Runbook operación → `infra/RUNBOOK.md` (C5).
+- [ ] Alertas Telegram (trade, error, daily loss, heartbeat 5min) — bloqueado N8.
+- [ ] VPS opcional (Windows, baja latencia CME) — bloqueado N6.
 
 ---
 
