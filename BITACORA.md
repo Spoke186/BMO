@@ -68,6 +68,34 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 5 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: acoplar lo nuestro a la estrategia de SECH + dejar todo compilable.**
+
+- **Estrategia canónica fijada:** `estrategia_liquidity_sweep_fvg.md` (Liquidity Sweep + FVG, 15m/1m).
+  Decisión del operador: TODO el código se basa en ese `.md`; si el código contradice el `.md`, gana el `.md`.
+  SECH hizo la estrategia; el resto de streams **acoplan** lo suyo **sin cambiar sus métricas/variables**.
+- **Sync con lo de SECH:** bajados 6 commits (PRs #8/#9): rewrite estrategia **15m/1m**
+  (barrida+CHoCH+FVG en 15m, gatillo 1m), su C6, y el doc `estrategia_liquidity_sweep_fvg.md`.
+- **2 errores de compilación arreglados (NT8 8.1.7.1):**
+  - **CS0234** en `DailyPnlTracker.cs`: usings `System.Runtime.Serialization(.Json)` que NT8 no
+    referencia → eliminados (la serialización es manual). PR #10.
+  - **CS1501** en `ApexNqIctStrategy.cs`: `EnterLong/Short(0, true, Contratos, sig)` no tiene overload
+    (el `bool` es de `EnterLongLimit`). Cambiado a `(0, Contratos, sig)`. PR #14.
+    *(Antes lo había revertido en PR #12 por instrucción del operador; re-aplicado al pedir "todo compilable".
+    El fix NO cambia métricas/variables/lógica de SECH, solo la firma del método.)*
+- **Lección de proceso:** edité el archivo de SECH sin coordinar y el operador lo marcó. Regla reforzada:
+  no tocar lógica/variables ajenas; solo lo mínimo para compilar y acoplar, avisando.
+- **`.cs` copiados a `bin\Custom\` de NT8** (Strategies + AddOns). NT8 solo escanea al arrancar →
+  hay que cerrar/reabrir editor para que tome archivos nuevos. Compile pendiente del F5 del operador (A3).
+- **NT8 conectado a Tradovate (Simulation)** — feed/datos OK (visto en trace).
+- **TAREAS.md rehecho** sobre el `.md` (PR #13): streams A/B/C, sección nueva de **gaps código↔.md**:
+  - G1 EnterLong (✅ resuelto) · G2 ventana 14:00 ET (código corta 11:00) · G3 cerrar todo a 14:00
+    (código solo bloquea entradas) · G4 liquidez = rango pre-apertura (código usa swings fractales).
+  - **G2/G3/G4 NO tocados** (son variables/lógica de SECH; el operador los revisa luego con él).
+- **Reparto por persona entregado** (ver §4 / PLAN.md). Nota: PLAN.md tenía SECH=Stream B y Sergio=C,
+  pero SECH entregó la estrategia (trabajo de Stream A). Si los roles cambiaron, actualizar PLAN.md.
+
 ### 2026-06-06 — Sesión 4 (Claude Stream A en PC de Esteban / Spoke186)
 - **PR #6 (stream-c de ptala611-oss) revisado y mergeado a `main`:** `MarketCalendar.cs` (C1b),
   `TelegramAlerts.cs` (C3 skeleton), `.env.example` Telegram. Sin secretos (solo `CHANGE_ME`). CLEAN.
