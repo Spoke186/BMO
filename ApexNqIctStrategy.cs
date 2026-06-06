@@ -115,10 +115,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private int trend; // 1 alcista, -1 bajista, 0 sin sesgo
 
+		// Rango pre-apertura (.md §4): high/low desde apertura de sesion hasta 9:30 ET.
+		// Son los niveles de liquidez que la barrida debe perforar y recuperar.
+		private double preMarketHigh;
+		private double preMarketLow;
+		private bool   preMarketReady; // true desde que cierra la ventana pre-apertura
+
 		// Maquina de estados 15m: buscar barrida → CHoCH + FVG
 		// 0 = buscando barrida, 1 = barrida detectada, esperando CHoCH+FVG
 		private int    sweepState15m;
-		private double sweepLevel15m;  // nivel de liquidez barrido
+		private double sweepLevel15m;  // nivel de liquidez barrido (del rango pre-apertura)
 		private int    sweepBar15m;    // CurrentBars[1] cuando se detecto la barrida
 
 		// Setup armado (FVG 15m identificado, esperando retroceso + confirmacion 1m)
@@ -146,6 +152,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en el entorno (N8 pendiente): wiring inerte
 		// hasta que el operador ponga el token. Solo se instancia en vivo, igual que pnlTracker.
 		private TelegramAlerts alerts;
+
+		// Bitácora DEMO Notion (infra/NotionLogger.cs). Requiere NOTION_API_KEY en entorno.
+		// Registra apertura al abrir trade y actualiza el cierre al cerrar.
+		private NotionLogger notion;
+		private System.Threading.Tasks.Task<string> notionPageTask;
+		private string  notionCurrentPageId;
+		private double  lastEntryPrice;
+		private int     lastEntryDir;
 		#endregion
 
 		protected override void OnStateChange()
@@ -200,6 +214,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				alerts = new TelegramAlerts();
 				alerts.SendAsync(TelegramAlerts.Msg.BotStart, Instrument.FullName);
+
+				notion = new NotionLogger();
 			}
 			else if (State == State.Terminated)
 			{
@@ -227,6 +243,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (Bars.IsFirstBarOfSession)
 				ResetForNewSession();
+
+			// Construir rango pre-apertura (.md §4) con barras 1m antes de las 9:30 ET.
+			// Una vez llegamos a KillZoneStart, el rango queda fijo para el dia.
+			if (!preMarketReady)
+			{
+				if (ToTime(Time[0]) < KillZoneStart * 100)
+				{
+					preMarketHigh = Math.Max(preMarketHigh, High[0]);
+					preMarketLow  = Math.Min(preMarketLow,  Low[0]);
+				}
+				else if (preMarketHigh > double.MinValue)
+				{
+					preMarketReady = true;
+					Print($"[PRE-AP] Range [{preMarketLow:F2}, {preMarketHigh:F2}]");
+				}
+			}
 
 			UpdateRiskGuards();
 			RecordClosedTrades();
@@ -302,30 +334,32 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			if (setupState == 1 || tradedToday || tradingDisabled || trend == 0) return;
 			if (!ApexBridgeState.TradingEnabled) return;
+			// Rango pre-apertura aun no esta listo (aun no llegamos a las 9:30 ET)
+			if (!preMarketReady) return;
 
 			double atrVal = atr15m[0];
 			if (atrVal <= 0) return;
 
 			if (sweepState15m == 0)
 			{
-				// Paso 2: detectar barrida de liquidez contra-tendencia
-				// La vela perforo el ultimo swing y el cierre recupero: validacion de cierre obligatoria
-				if (trend == 1 && swingLows15m.Count > 0)
+				// Paso 2: barrida del rango pre-apertura (.md §4/§5).
+				// La vela 15m perfora el nivel pre-apertura con la mecha y el CIERRE recupera.
+				if (trend == 1)
 				{
-					double lastLow = swingLows15m[swingLows15m.Count - 1];
-					if (Low[0] < lastLow && Close[0] > lastLow)
+					// Dia alcista: barrer el MINIMO pre-apertura (liquidez debajo)
+					if (Low[0] < preMarketLow && Close[0] > preMarketLow)
 					{
-						sweepLevel15m = lastLow;
+						sweepLevel15m = preMarketLow;
 						sweepBar15m   = CurrentBars[1];
 						sweepState15m = 1;
 					}
 				}
-				else if (trend == -1 && swingHighs15m.Count > 0)
+				else if (trend == -1)
 				{
-					double lastHigh = swingHighs15m[swingHighs15m.Count - 1];
-					if (High[0] > lastHigh && Close[0] < lastHigh)
+					// Dia bajista: barrer el MAXIMO pre-apertura (liquidez arriba)
+					if (High[0] > preMarketHigh && Close[0] < preMarketHigh)
 					{
-						sweepLevel15m = lastHigh;
+						sweepLevel15m = preMarketHigh;
 						sweepBar15m   = CurrentBars[1];
 						sweepState15m = 1;
 					}
@@ -524,6 +558,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			tradingDisabled    = false;
 			setupState         = 0;
 			sweepState15m      = 0;
+			preMarketHigh      = double.MinValue;
+			preMarketLow       = double.MaxValue;
+			preMarketReady     = false;
 			sessionStartCumPnl = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
 		}
 
@@ -578,6 +615,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 				double tradePnl = SystemPerformance.AllTrades[i].ProfitCurrency;
 				pnlTracker.RecordTrade(tradePnl);
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+
+				// Resolver el pageId de Notion (la apertura puede haber tardado unos ms)
+				if (notionPageTask != null)
+				{
+					if (notionPageTask.IsCompleted)
+						notionCurrentPageId = notionPageTask.Result;
+					notionPageTask = null;
+				}
+				if (notion != null && !string.IsNullOrEmpty(notionCurrentPageId))
+				{
+					double tol    = 50;
+					string notas  = tradePnl >=  ProfitTargetUsd - tol ? "Target alcanzado"
+					              : tradePnl <= -StopLossUsd     + tol ? "Stop alcanzado"
+					              :                                       "Cierre por horario o parcial";
+					notion.ActualizarCierreAsync(notionCurrentPageId, tradePnl, notas);
+					notionCurrentPageId = null;
+				}
 			}
 			lastTradeCount = total;
 		}
@@ -628,10 +682,37 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if ((execution.Order.Name == "LongFVG" || execution.Order.Name == "ShortFVG")
 			    && execution.Order.OrderState == OrderState.Filled)
 			{
-				tradedToday = true;
-				setupState  = 0;
+				tradedToday    = true;
+				setupState     = 0;
+				lastEntryPrice = price;
+				lastEntryDir   = execution.Order.Name == "LongFVG" ? 1 : -1;
+
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
-					$"{(execution.Order.Name == "LongFVG" ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
+					$"{(lastEntryDir == 1 ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
+
+				if (notion != null)
+				{
+					double ptVal   = Instrument.MasterInstrument.PointValue;
+					double stopPts = StopLossUsd    / (ptVal * Contratos);
+					double tpPts   = ProfitTargetUsd / (ptVal * Contratos);
+					double stopPx  = lastEntryDir == 1 ? price - stopPts : price + stopPts;
+					double tpPx    = lastEntryDir == 1 ? price + tpPts   : price - tpPts;
+
+					// Hora Colombia: UTC-5 (siempre, sin DST)
+					var colZone    = TimeZoneInfo.FindSystemTimeZoneById("SA Pacific Standard Time");
+					var colTime    = TimeZoneInfo.ConvertTime(DateTime.Now, colZone);
+					string horaCol = colTime.ToString("HH:mm");
+
+					notionPageTask = notion.RegistrarAperturaAsync(
+						esFondeo:    false,
+						activo:      Instrument.FullName,
+						dir:         lastEntryDir,
+						entryPrice:  price,
+						stopPrice:   stopPx,
+						targetPrice: tpPx,
+						horaCol:     horaCol,
+						fecha:       DateTime.Now.Date);
+				}
 			}
 		}
 		#endregion

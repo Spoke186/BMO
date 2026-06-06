@@ -34,7 +34,7 @@
 | A3 Compilar en NT8 (F5) limpio | ⬜ | A2 |
 | A4 ⚠️ Ventana entrada `.md` §3 = **9:30–14:00 ET** (código corta 11:00) | ⬜ | A3 |
 | A5 ⚠️ Cierre **TOTAL** 14:00 ET (`.md` §11 "cerrar todo"); código solo bloquea nuevas entradas | ⬜ | A3 |
-| A6 ⚠️ Liquidez = **rango pre-apertura** (`.md` §4); código usa swings fractales 15m | ⬜ diseño | A3 |
+| A6 ⚠️ Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET | A3 |
 | A7 Backtest Strategy Analyzer (NQ, primaria 1m + 15m, 3–6 meses) | ⬜ | A3 |
 | A8 Tuning params `.md` §13 (N velas swing, gap mín FVG, ratio rechazo 1m) | ⬜ | A7 |
 | A9 2da operación opcional si la 1ra fue ganadora (`.md` §1/§11) | ⬜ fase 2 | A7 |
@@ -70,9 +70,9 @@
 | # | Gap | Archivo | Severidad |
 |---|-----|---------|-----------|
 | G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | 🔴 bloquea todo |
-| G2 | Ventana entrada corta a 11:00; el `.md` permite hasta 14:00 ET | `ApexNqIctStrategy.cs` (`KillZoneEnd`) | 🟠 lógica |
-| G3 | A las 14:00 solo bloquea entradas; el `.md` exige **cerrar todo** | `ApexNqIctStrategy.cs` (`ForcedExit`) | 🟠 lógica |
-| G4 | Liquidez = swings fractales; el `.md` §4 usa **rango pre-apertura** | `ApexNqIctStrategy.cs` (`swingHighs/Lows15m`) | 🟠 diseño |
+| G2 | Ventana entrada corta a 11:00 (**intencional** — operador: "después 10am Colombia no entro") | `ApexNqIctStrategy.cs` (`KillZoneEnd=1100`) | ✅ decisión operador |
+| G3 | ForcedExit solo bloquea entradas (**intencional** — operador: "dejar que termine, 1 oportunidad/día") | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
+| G4 | Liquidez = swings fractales → **corregido**: usa rango pre-apertura 1m hasta 9:30 ET | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto Stream B |
 
 > G1 es lo único que impide compilar. G2–G4 son alineación a la estrategia del `.md`.
 
