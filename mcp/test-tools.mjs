@@ -37,6 +37,15 @@ function startMock() {
         res.end('{"trading_enabled":true}');
       else if (method === 'POST' && url === '/strategy/disable')
         res.end('{"trading_enabled":false}');
+      else if (method === 'GET'  && url === '/setup')
+        res.end(JSON.stringify({
+          trend: 'BULLISH', pre_market_ready: true,
+          pre_market_high: 21500.25, pre_market_low: 21420.50,
+          sweep: 'DETECTED', sweep_level: 21420.50,
+          setup: 'ACTIVE_LONG', fvg_lower: 21440.00, fvg_upper: 21455.75,
+          price_in_fvg: false, traded_today: false,
+          trading_disabled: false, trading_enabled: true,
+        }));
       else { res.writeHead(404); res.end('{"error":"not found"}'); }
     });
     srv.listen(PORT, '127.0.0.1', () => resolve(srv));
@@ -88,6 +97,7 @@ const TESTS = [
   { id: 4, name: 'enable_strategy',  args: {},                    expect: 'trading_enabled' },
   { id: 5, name: 'disable_strategy', args: {},                    expect: 'trading_enabled' },
   { id: 6, name: 'check_market',     args: { date: '2026-06-05'}, expect: 'trading_day'     },
+  { id: 7, name: 'get_setup_state', args: {},                    expect: 'pre_market_ready' },
 ];
 
 async function main() {

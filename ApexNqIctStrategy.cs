@@ -236,6 +236,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				UpdateTrend15m();
 				TryDetectSetup15m();
+				PublishState();
 				return;
 			}
 
@@ -323,6 +324,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				ManageSetup1m(inKillZone);
 			}
+
+			PublishState();
 		}
 
 		#region Tendencia y swings 15m (estructura HH/HL)
@@ -667,6 +670,26 @@ namespace NinjaTrader.NinjaScript.Strategies
 			lastTradeCount = total;
 		}
 		#endregion
+
+		// Publica estado ICT en ApexBridgeState para que el AddOn lo exponga via GET /setup.
+		// Llamado al final de cada bar 1m y 15m. No es thread-safe estricto (double no volatile),
+		// pero la imprecision es aceptable: los datos son solo para monitoreo, no para ordenes.
+		private void PublishState()
+		{
+			ApexBridgeState.Trend           = trend;
+			ApexBridgeState.PreMarketReady  = preMarketReady;
+			ApexBridgeState.PreMarketHigh   = preMarketHigh > double.MinValue ? preMarketHigh : 0;
+			ApexBridgeState.PreMarketLow    = preMarketLow  < double.MaxValue ? preMarketLow  : 0;
+			ApexBridgeState.SweepState      = sweepState15m;
+			ApexBridgeState.SweepLevel      = sweepLevel15m;
+			ApexBridgeState.SetupState      = setupState;
+			ApexBridgeState.SetupDir        = setupDir;
+			ApexBridgeState.FvgLower        = fvgLower;
+			ApexBridgeState.FvgUpper        = fvgUpper;
+			ApexBridgeState.PriceInFvg      = priceInFvg;
+			ApexBridgeState.TradedToday     = tradedToday;
+			ApexBridgeState.TradingDisabled = tradingDisabled;
+		}
 
 		#region Ordenes / utilidades
 		private void AddCapped(List<double> list, double v)

@@ -119,6 +119,15 @@ const TOOLS: Tool[] = [
     handler: () => bridge("/strategy/disable", "POST"),
   },
   {
+    name: "get_setup_state",
+    description:
+      "Estado ICT en tiempo real: sesgo 15m (BULLISH/BEARISH/NONE), rango pre-apertura, " +
+      "barrida detectada, CHoCH+FVG armado (ACTIVE_LONG/ACTIVE_SHORT/NONE), precio ya " +
+      "entró al FVG, si ya operó hoy. Usar para saber en qué paso está el bot.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    handler: () => bridge("/setup"),
+  },
+  {
     name: "check_market",
     description:
       "Consulta si hoy (o una fecha dada) es dia habil CME para NQ/MNQ. " +
@@ -140,7 +149,7 @@ const TOOLS: Tool[] = [
 // ─── MCP server ──────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "apex-nt8-mcp", version: "0.2.0" },
+  { name: "apex-nt8-mcp", version: "0.3.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -165,4 +174,4 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("apex-nt8-mcp v0.2.0 listo (stdio)");
+console.error("apex-nt8-mcp v0.3.0 listo (stdio)");

@@ -37,6 +37,22 @@ namespace NinjaTrader.NinjaScript.AddOns
 	{
 		// Arranca habilitado; el MCP/operador lo apaga cuando quiera.
 		public static volatile bool TradingEnabled = true;
+
+		// Estado del setup ICT (escrito por la estrategia en cada bar, leido por el AddOn).
+		// Solo para monitoreo — no es thread-safe estricto, pero la imprecision es aceptable.
+		public static int    Trend           = 0;   // 1=alcista -1=bajista 0=sin sesgo
+		public static bool   PreMarketReady  = false;
+		public static double PreMarketHigh   = 0;
+		public static double PreMarketLow    = 0;
+		public static int    SweepState      = 0;   // 0=buscando 1=detectada
+		public static double SweepLevel      = 0;
+		public static int    SetupState      = 0;   // 0=sin setup 1=armado
+		public static int    SetupDir        = 0;   // 1=long -1=short
+		public static double FvgLower        = 0;
+		public static double FvgUpper        = 0;
+		public static bool   PriceInFvg      = false;
+		public static bool   TradedToday     = false;
+		public static bool   TradingDisabled = false;
 	}
 
 	public class ApexBridgeAddOn : AddOnBase
@@ -139,6 +155,10 @@ namespace NinjaTrader.NinjaScript.AddOns
 			{
 				Write(ctx, 200, PositionJson());
 			}
+			else if (method == "GET" && path == "/setup")
+			{
+				Write(ctx, 200, SetupJson());
+			}
 			else if (method == "GET" && path == "/trades/today")
 			{
 				// TODO(Stream A/C): exponer trades reales del dia desde la estrategia.
@@ -206,6 +226,31 @@ namespace NinjaTrader.NinjaScript.AddOns
 				+ "}";
 		}
 
+		private string SetupJson()
+		{
+			string trend = ApexBridgeState.Trend ==  1 ? "BULLISH"
+			             : ApexBridgeState.Trend == -1 ? "BEARISH" : "NONE";
+			string sweep = ApexBridgeState.SweepState == 1 ? "DETECTED" : "WATCHING";
+			string setup = ApexBridgeState.SetupState == 1
+			    ? (ApexBridgeState.SetupDir == 1 ? "ACTIVE_LONG" : "ACTIVE_SHORT") : "NONE";
+
+			return "{"
+				+ $"\"trend\":\"{trend}\","
+				+ $"\"pre_market_ready\":{Bool(ApexBridgeState.PreMarketReady)},"
+				+ $"\"pre_market_high\":{Num(ApexBridgeState.PreMarketHigh)},"
+				+ $"\"pre_market_low\":{Num(ApexBridgeState.PreMarketLow)},"
+				+ $"\"sweep\":\"{sweep}\","
+				+ $"\"sweep_level\":{Num(ApexBridgeState.SweepLevel)},"
+				+ $"\"setup\":\"{setup}\","
+				+ $"\"fvg_lower\":{Num(ApexBridgeState.FvgLower)},"
+				+ $"\"fvg_upper\":{Num(ApexBridgeState.FvgUpper)},"
+				+ $"\"price_in_fvg\":{Bool(ApexBridgeState.PriceInFvg)},"
+				+ $"\"traded_today\":{Bool(ApexBridgeState.TradedToday)},"
+				+ $"\"trading_disabled\":{Bool(ApexBridgeState.TradingDisabled)},"
+				+ $"\"trading_enabled\":{Bool(ApexBridgeState.TradingEnabled)}"
+				+ "}";
+		}
+
 		private static void Write(HttpListenerContext ctx, int code, string json)
 		{
 			byte[] buf = Encoding.UTF8.GetBytes(json);
@@ -217,6 +262,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 		}
 
 		private static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+		private static string Bool(bool b)  => b ? "true" : "false";
 		private static string Escape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
 	}
 }
