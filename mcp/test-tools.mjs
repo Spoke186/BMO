@@ -32,11 +32,24 @@ function startMock() {
       else if (method === 'GET'  && url === '/position')
         res.end(JSON.stringify({ instrument: 'NQ 09-26', market_position: 'FLAT', quantity: 0 }));
       else if (method === 'GET'  && url === '/trades/today')
-        res.end(JSON.stringify({ trades: [], note: 'placeholder' }));
+        res.end(JSON.stringify({
+          count: 1, total_pnl: 700,
+          trades: [{ direction: 'LONG', entry: 21440.00, exit: 21457.50,
+                     pnl: 700, exit_time: '10:23:45', result: 'WIN' }],
+        }));
       else if (method === 'POST' && url === '/strategy/enable')
         res.end('{"trading_enabled":true}');
       else if (method === 'POST' && url === '/strategy/disable')
         res.end('{"trading_enabled":false}');
+      else if (method === 'GET'  && url === '/setup')
+        res.end(JSON.stringify({
+          trend: 'BULLISH', pre_market_ready: true,
+          pre_market_high: 21500.25, pre_market_low: 21420.50,
+          sweep: 'DETECTED', sweep_level: 21420.50,
+          setup: 'ACTIVE_LONG', fvg_lower: 21440.00, fvg_upper: 21455.75,
+          price_in_fvg: false, traded_today: false,
+          trading_disabled: false, trading_enabled: true,
+        }));
       else { res.writeHead(404); res.end('{"error":"not found"}'); }
     });
     srv.listen(PORT, '127.0.0.1', () => resolve(srv));
@@ -84,10 +97,11 @@ function notify(method, params = {}) {
 const TESTS = [
   { id: 1, name: 'get_account',      args: {},                    expect: 'cash_value'      },
   { id: 2, name: 'get_position',     args: {},                    expect: 'market_position' },
-  { id: 3, name: 'get_today_trades', args: {},                    expect: 'trades'          },
+  { id: 3, name: 'get_today_trades', args: {},                    expect: 'total_pnl'       },
   { id: 4, name: 'enable_strategy',  args: {},                    expect: 'trading_enabled' },
   { id: 5, name: 'disable_strategy', args: {},                    expect: 'trading_enabled' },
   { id: 6, name: 'check_market',     args: { date: '2026-06-05'}, expect: 'trading_day'     },
+  { id: 7, name: 'get_setup_state', args: {},                    expect: 'pre_market_ready' },
 ];
 
 async function main() {

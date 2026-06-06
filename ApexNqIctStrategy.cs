@@ -236,6 +236,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				UpdateTrend15m();
 				TryDetectSetup15m();
+				PublishState();
 				return;
 			}
 
@@ -323,6 +324,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				ManageSetup1m(inKillZone);
 			}
+
+			PublishState();
 		}
 
 		#region Tendencia y swings 15m (estructura HH/HL)
@@ -593,6 +596,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			preMarketReady     = false;
 			preMarketAttempted = false;
 			sessionStartCumPnl = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
+			lock (ApexBridgeState.TodayTradesLock)
+				ApexBridgeState.TodayTrades.Clear();
 		}
 
 		private void UpdateRiskGuards()
@@ -643,9 +648,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 			int total = SystemPerformance.AllTrades.Count;
 			for (int i = lastTradeCount; i < total; i++)
 			{
-				double tradePnl = SystemPerformance.AllTrades[i].ProfitCurrency;
+				var    t        = SystemPerformance.AllTrades[i];
+				double tradePnl = t.ProfitCurrency;
 				pnlTracker.RecordTrade(tradePnl);
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+
+				// Publicar trade al AddOn (B6) — accesible via GET /trades/today
+				lock (ApexBridgeState.TodayTradesLock)
+					ApexBridgeState.TodayTrades.Add(new TradeSummary
+					{
+						Direction  = t.Entry.MarketPosition == MarketPosition.Long ? "LONG" : "SHORT",
+						EntryPrice = t.Entry.Price,
+						ExitPrice  = t.Exit.Price,
+						PnlUsd     = tradePnl,
+						ExitTime   = t.Exit.Time.ToString("HH:mm:ss"),
+						Result     = tradePnl > 0 ? "WIN" : "LOSS",
+					});
 
 				// Resolver el pageId de Notion (la apertura puede haber tardado unos ms)
 				if (notionPageTask != null)
@@ -667,6 +685,26 @@ namespace NinjaTrader.NinjaScript.Strategies
 			lastTradeCount = total;
 		}
 		#endregion
+
+		// Publica estado ICT en ApexBridgeState para que el AddOn lo exponga via GET /setup.
+		// Llamado al final de cada bar 1m y 15m. No es thread-safe estricto (double no volatile),
+		// pero la imprecision es aceptable: los datos son solo para monitoreo, no para ordenes.
+		private void PublishState()
+		{
+			ApexBridgeState.Trend           = trend;
+			ApexBridgeState.PreMarketReady  = preMarketReady;
+			ApexBridgeState.PreMarketHigh   = preMarketHigh > double.MinValue ? preMarketHigh : 0;
+			ApexBridgeState.PreMarketLow    = preMarketLow  < double.MaxValue ? preMarketLow  : 0;
+			ApexBridgeState.SweepState      = sweepState15m;
+			ApexBridgeState.SweepLevel      = sweepLevel15m;
+			ApexBridgeState.SetupState      = setupState;
+			ApexBridgeState.SetupDir        = setupDir;
+			ApexBridgeState.FvgLower        = fvgLower;
+			ApexBridgeState.FvgUpper        = fvgUpper;
+			ApexBridgeState.PriceInFvg      = priceInFvg;
+			ApexBridgeState.TradedToday     = tradedToday;
+			ApexBridgeState.TradingDisabled = tradingDisabled;
+		}
 
 		#region Ordenes / utilidades
 		private void AddCapped(List<double> list, double v)
