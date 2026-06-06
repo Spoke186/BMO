@@ -27,17 +27,23 @@ Temporalidades: **15m sesgo/FVG, 1m gatillo**.
 7. **Entrada** = mercado al cierre de la vela de confirmación 1m, a favor de tendencia.
 
 ### Setup B — Sweep directo (entrada inmediata, sin FVG)
-Patrón: banco barre liquidez del rango pre-apertura al abrir NY para atrapar retail, luego el mercado hace el move real. Entrada en la vela 1m que confirma la reversión.
-- **SHORT**: `High[0] > preMarketHigh` Y `Close[0] < preMarketHigh` Y vela bajista → entrada mercado.
-- **LONG**: `Low[0] < preMarketLow` Y `Close[0] > preMarketLow` Y vela alcista → entrada mercado.
-- Si Setup A ya está armado (`setupState == 1`), Setup B no dispara (A tiene prioridad).
+Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles de barrida:
+1. Rango pre-mercado (8:00–9:30 ET): `preMarketHigh` / `preMarketLow`
+2. **PDH/PDL** (Previous Day High/Low, `EnablePdhPdl=true`): niveles ICT de mayor liquidez.
+
+- **LONG** (sweep de mínimo): `Low[0] < nivel - minSweep` Y `Close[0] > nivel` Y vela alcista.
+- **SHORT** (sweep de máximo): `High[0] > nivel + minSweep` Y `Close[0] < nivel` Y vela bajista.
+- **Filtro dirección**: `EnableDailyBiasFilter=true` — dia alcista → solo longs; dia bajista → solo shorts.
+  `SetupBRequiresTrend=false` (default): el bias filter ya filtra dirección (evita conflictos).
+- `Allow2ndTradeIfWinner=false` (default): si `true`, habilita 2do trade si el primero fue ganador.
+- Si Setup A ya está armado (`setupState == 1`), Setup B no dispara.
 - Desactivable con `EnableSetupB = false`.
 
 ### Común a ambos setups
 - **Stop $250 fijo / TP $700 fijo** (1:3 RR). 2 contratos fijos siempre.
-- **Ventana entrada**: `KillZoneStart=930` → `KillZoneEnd=1100` ET (Colombia 8:30–10:00 EDT).
+- **Ventana entrada**: `KillZoneStart=930` → `KillZoneEnd=1130` ET (Colombia 8:30–10:30 EDT).
 - Posición abierta antes de `KillZoneEnd` **corre hasta TP/SL**; `ForcedExit=1400` ET solo bloquea nuevas entradas, no aplana posición activa.
-- **1 setup/día** (Apex). `tradedToday` compartido entre A y B.
+- **1 setup/día** por defecto. `tradedToday` compartido entre A y B. Con `Allow2ndTradeIfWinner=true`: 2 trades posibles si primero gana.
 - Señales: `LongFVG`/`ShortFVG` (Setup A), `LongSweep`/`ShortSweep` (Setup B).
 
 ## Riesgo Apex en el código
