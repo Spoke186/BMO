@@ -33,13 +33,16 @@
 | A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
 | A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
 | A3 Compilar en NT8 (F5) limpio | ✅ **confirmado** (Esteban, sesión 9: aparece en Strategy Analyzer = compiló limpio) | A2 |
-| A4 Ventana entrada `.md` §3 = **9:30–14:00 ET** | ✅ `KillZoneEnd=1400` (operador: "entra cuando quiera") | A3 |
+| A4 Ventana entrada | ✅ **revisado sesión 11: `KillZoneEnd=1100`** (09:30–11:00 ET, kill zone NY). Operador volvió a 11:00 (sesión 6 fue 1400) | A3 |
 | A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
 | A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
-| A7 Backtest Strategy Analyzer (NQ, primaria 1m + 15m, 3–6 meses) | ⬜ **compartida** (cualquier PC con NT8 + datos Globex/24h overnight) | A3 |
+| A7 Backtest Strategy Analyzer (NQ `NQ ##-##` 1m + 15m, 3–6 meses, Globex/24h) | 🚧 corre OK (sesión 10: rango pre-ap arma con ETH). Setup A daba ~0 trades (rango overnight muy ancho); Setup B (A11) genera más. Falta exportar + `analyze_backtest.py` | A3 |
 | A8 Tuning params `.md` §13 (N velas swing, gap mín FVG, ratio rechazo 1m) | ⬜ | A7 |
 | A9 2da operación opcional si la 1ra fue ganadora (`.md` §1/§11) | ⬜ fase 2 | A7 |
 | A10 Consistencia 50% integrada (`DailyPnlTracker`) | ✅ falta validar en Sim | C2 |
+| A11 **Setup B** (Opening Range Sweep: barrida 1m del rango pre-mercado → entrada directa SIN CHoCH/FVG ni filtro tendencia, flag `EnableSetupB` default ON) | ✅ PR #24 (Sergio) | A3 |
+| A12 Exponer estado de **Setup B** en `PublishState`/`/setup` (hoy solo muestra Setup A) | ⬜ **Sergio** | A11, B7 |
+| A13 Backtest comparativo **Setup A vs B** (win rate, PF, # trades) → decidir cuál(es) dejar | ⬜ | A7 |
 
 ### Stream B — MCP & Bridge  (dueño: `/mcp`, `/ntaddon`)
 | Tarea | Estado | Depende de |
@@ -51,7 +54,8 @@
 | B5 Probar loop Claude→MCP→AddOn→NT8 (en Sim) | ⛔ | A3, B3, N6 |
 | B6 `get_today_trades` real | ✅ **PR #19 mergeado** (`/trades/today` real + `TodayTrades`); fix `using` aplicado | A/C |
 | B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | ✅ **PR #19 mergeado** (`PublishState`+`/setup`+tool `get_setup_state`, MCP v0.3.0) | A3 |
-| B8 Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring) | ✅ PR #16; inerte sin `NOTION_API_KEY` (N11) | — |
+| B8 Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring) | ✅ código PR #16; inerte sin token | — |
+| B9 **Activar bitácora Notion** (Sergio): poner `NOTION_API_KEY` (N11), dar acceso del bot a la BD, validar registro apertura+cierre en Sim | ⬜ **Sergio** | N11 |
 
 > **Handoff Sergio (sesión 7):** `main` limpio, contrato A↔B vivo (`ApexBridgeState.TradingEnabled`,
 > ya consultado por la estrategia). **Puede avanzar YA con mock (sin NT8/Apex):** B6 (definir contrato
@@ -70,6 +74,7 @@
 | C1b `MarketCalendar.cs` para NinjaScript | ✅ `infra/MarketCalendar.cs` | — |
 | C2 Consistencia 50% (lógica + persistencia) | ✅ `infra/DailyPnlTracker.cs` | — |
 | C3 Alertas Telegram (trade/error/daily loss/heartbeat) | 🚧 `alerts/TelegramAlerts.cs` + wiring ✅; falta token N8 | N8 |
+| C8 **Bot Telegram con SEÑALES** (Alan): manda señal de entrada en vivo — dirección, precio, setup (A/B), stop/target — al canal. Formato + activación con token | ⬜ **Alan** | C3, N8 |
 | C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅; setup espera N6 | N6 |
 | C5 Runbook operación | ✅ `infra/RUNBOOK.md` | — |
 | C6 Integrar `MarketCalendar.cs` en estrategia | ✅ hook en `OnBarUpdate` | C1b |
@@ -82,7 +87,7 @@
 | # | Gap | Archivo | Estado |
 |---|-----|---------|--------|
 | G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | ✅ PR #14 |
-| G2 | Ventana entrada 09:30–14:00 ET (`.md` §3; operador sesión 6: "el bot entra cuando quiera") | `ApexNqIctStrategy.cs` (`KillZoneEnd=1400`) | ✅ corregido (antes 1100) |
+| G2 | Ventana entrada — **revisado sesión 11 a 09:30–11:00 ET** (`KillZoneEnd=1100`). Operador volvió a 11:00 (sesión 6 fue 1400). `.md` §3 dice hasta 14:00 → gana la decisión del operador | `ApexNqIctStrategy.cs` (`KillZoneEnd=1100`) | ✅ decisión operador |
 | G3 | ForcedExit solo bloquea entradas; posición abierta corre a TP/SL (**intencional** — operador: "dejar que termine, 1 oportunidad/día"). NO cierra total pese a `.md` §11 | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
 | G4 | Liquidez = rango pre-apertura 1m hasta 9:30 ET (`.md` §4) | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto (impl. SECH) |
 
@@ -108,8 +113,8 @@ N6 (PC-LIVE) ─► B5, C4
 
 ---
 
-## E. Acción inmediata sugerida
-1. **Stream A:** fix G1 (compilar), luego alinear G2/G3/G4 al `.md`, F5, backtest.
-2. **Operador:** comprar Apex (N1), confirmar N3/N6, valor de punto (N10), token Telegram (N8).
-3. **Stream B:** dejar B3 con placeholders hasta N4.
-4. **Stream C:** C7 (coherencia cierre 14:00 vs media sesión).
+## E. Acción inmediata (sesión 11)
+- **Esteban (Stream A):** A7 — backtest NQ `NQ ##-##` 1m, Globex/24h, con Setup B activo → exportar trades → `analyze_backtest.py`. Luego A13 (comparar Setup A vs B) y A8 (tuning).
+- **Sergio (Stream B + estrategia):** B9 — activar bitácora Notion (token N11, acceso BD, validar en Sim). A12 — exponer Setup B en `/setup`.
+- **Alan (Stream C):** C8 — bot Telegram con **señales** de entrada en vivo (dir/precio/setup/stop/target) + formato + activación (token N8).
+- **Operador:** N1 (Apex), N6 (PC-LIVE), N8 (token Telegram), N10 (valor punto), N11 (token Notion).
