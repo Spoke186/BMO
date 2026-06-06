@@ -36,25 +36,35 @@
 > intercambiar** sin problema. **A debe quedarse con quien tenga NinjaTrader 8 instalado.**
 > Cada persona le dice a SU Claude: *"soy stream-X, lee CLAUDE.md + PLAN.md + BITACORA.md + TAREAS.md"*.
 
-### Primeras acciones por persona (esta semana)
+### Sprint 1 — tareas actuales por persona
 
-**Spoke186 (Stream A + inputs operador)**
-1. Comprar Apex 50K (N1) y pasar al equipo: versión NT8 (N2), conexión Rithmic/Tradovate (N3), NQ vs MNQ (N5), cuál PC es PC-LIVE (N6).
-2. Decidir visibilidad del repo (N9).
-3. Poner `ApexNqIctStrategy.cs` **y** `ntaddon/ApexBridgeAddOn.cs` en `bin\Custom\`, compilar (A2).
-4. Backtest en Strategy Analyzer (A3) → tuning (A4).
+> Instrumento decidido: **NQ mini** (el bracket USD fijo $250/$700 lo implica). Ambos colaboradores
+> ya clonaron. Marca `[x]` al terminar y commitea. DoD = "Definition of Done".
 
-**2317SECH (Stream B) — puede arrancar YA, sin Apex**
-1. `git clone` + `git checkout -b stream-b`.
-2. `cd mcp` → `npm install` → `npm run build` (B4).
-3. Leer `ntaddon/ApexBridgeAddOn.cs` y `mcp/src/index.ts`; dejar B3 con placeholders.
-4. Preparar registro en `.mcp.json`. Esperar N3/N4/N5 para datos reales (B3) y N6 para probar el loop (B5).
+**Spoke186 (Stream A) — necesita NinjaTrader; aporta inputs Apex**
+- [ ] Comprar **Apex 50K** (N1).
+- [ ] Pasar al equipo: versión NT8 (N2), conexión Rithmic/Tradovate (N3), PC-LIVE (N6), visibilidad repo (N9).
+- [ ] Poner `ApexNqIctStrategy.cs` **y** `ntaddon/ApexBridgeAddOn.cs` en `bin\Custom\`, **compilar** (A2).
+- [ ] Gráfico **NQ 5m** + aplicar la estrategia. Verificar params (2 contratos, $250/$700, kill zone).
+- [ ] Backtest Strategy Analyzer 3–6 meses NQ 5m (A3).
+- DoD: compila sin errores + 1 backtest con métricas (win rate, profit factor, max DD) en el chat/repo.
 
-**ptala611-oss (Stream C) — puede arrancar YA, sin Apex**
-1. `git clone` + `git checkout -b stream-c`.
-2. C1: `market_calendar` (festivos/medias sesiones CME).
-3. C2: módulo consistencia 50% lun–vie (lógica + persistencia P&L) para que A lo integre.
-4. C5: runbook de operación. Esperar N8 (Telegram) para C3 y N6 para C4 (VPS).
+**2317SECH (Stream B — MCP) — arranca YA, sin Apex**
+- [ ] `git checkout -b stream-b`.
+- [ ] `cd mcp` → `npm install` → `npm run build` (B4). Que compile sin errores TS.
+- [ ] Mover el `Token` del AddOn y del MCP a **variable de entorno** (quitar hardcode).
+- [ ] Probar el MCP contra un **mock HTTP** local (simular el AddOn) para validar los 5 tools.
+- [ ] Preparar snippet de registro en `.mcp.json`.
+- Bloqueado hasta datos: `AccountName`/símbolo reales (B3, espera N3/N4), prueba loop en NT8 (B5, espera N6 + A2).
+- DoD: `npm run build` OK + 5 tools responden contra el mock + README de cómo correrlo.
+
+**ptala611-oss (Stream C — Infra/Riesgo) — arranca YA, sin Apex**
+- [ ] `git checkout -b stream-c`.
+- [ ] **C1** `market_calendar`: lista de festivos/medias sesiones CME + helper `is_trading_day(date)`. Definir si vive como archivo de datos que lee la estrategia o módulo aparte.
+- [ ] **C2** consistencia 50% lun–vie: diseñar persistencia (ej JSON de P&L por día) + lógica `would_violate_consistency(profit_hoy)`. Entregable para que A lo integre en el `.cs`.
+- [ ] **C5** runbook: arranque diario, qué hacer si el bot cae, checklist pre-mercado.
+- Bloqueado hasta datos: C3 Telegram (N8), C4 VPS (N6).
+- DoD: C1 y C2 con tests básicos + C5 escrito, todo en `/infra` o `/utils`.
 
 ---
 

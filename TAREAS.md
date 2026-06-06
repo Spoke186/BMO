@@ -13,7 +13,7 @@
 | N2 | Versión exacta NT8 (Help → About) | Operador | Verificar API del AddOn | ⬜ |
 | N3 | Conexión Apex: **Rithmic o Tradovate** | Operador | Config feed/broker | ⬜ |
 | N4 | Nombre/ID de cuenta en NT8 (ej `APEX-xxxxx`) | Operador | `AccountName` en el AddOn | ⛔ depende N1 |
-| N5 | Símbolo + contrato vigente (NQ vs **MNQ**) | Operador | `InstrumentName` en el AddOn | ⬜ (recomendado MNQ) |
+| N5 | Símbolo + contrato vigente | Operador | `InstrumentName` en el AddOn | ✅ **NQ mini** (lo fija el bracket USD) |
 | N6 | Cuál PC es **PC-LIVE** (corre NT8 24/5) | Operador | Dónde viven bot + AddOn + MCP | ⬜ |
 | N7 | **2º usuario GitHub** | Operador | Invitar 2º colaborador | ✅ ptala611-oss invitado |
 | N8 | Token bot **Telegram** + chat id | Operador | Alertas (Stream C) | ⬜ (después) |
