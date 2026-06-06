@@ -36,6 +36,12 @@
 > intercambiar** sin problema. **A debe quedarse con quien tenga NinjaTrader 8 instalado.**
 > Cada persona le dice a SU Claude: *"soy stream-X, lee CLAUDE.md + PLAN.md + BITACORA.md + TAREAS.md"*.
 
+> **Nota (sesión 8): A3/A7 son tareas COMPARTIDAS.** Spoke186 (Esteban) **y** 2317SECH (Sergio) tienen
+> NinjaTrader 8 (editor) → cualquiera de los 2 puede compilar (F5, A3) y backtestear (A7) en su PC.
+> Esto NO cambia la propiedad de archivos (cada stream sigue dueño de sus carpetas), solo permite que
+> el compile/backtest no dependa de un único PC. **PC-LIVE (N6, el que corre 24/5 en vivo) sigue siendo
+> decisión aparte.**
+
 ### Sprint 1 — tareas actuales por persona
 
 > Instrumento decidido: **NQ mini** (el bracket USD fijo $250/$700 lo implica). Ambos colaboradores
