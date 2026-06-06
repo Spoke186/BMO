@@ -72,6 +72,9 @@ NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop
 - **GitHub:** creado repo **Spoke186/BMO** (PÚBLICO), push de `main` OK.
 - **Colaboradores:** invitados **2317SECH** y **ptala611-oss** (permiso write). Equipo completo (3).
 - Creada esta bitácora.
+- Invitados y **aceptados** los 2 colaboradores: 2317SECH, ptala611-oss (write).
+- **Asignación de streams:** Spoke186 → A (estrategia, tiene NT8), 2317SECH → B (MCP/bridge),
+  ptala611-oss → C (infra/riesgo/alertas). Detalle + primeras acciones en `PLAN.md`.
 
 ---
 

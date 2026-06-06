@@ -24,6 +24,40 @@
 
 ---
 
+## Asignación de contribuidores
+
+| Persona (GitHub) | Stream | Por qué | Branch |
+|------------------|--------|---------|--------|
+| **Spoke186** (Esteban, operador) | **A — Estrategia & Backtest** | Tiene NT8, conoce la estrategia, aporta datos Apex y el "ojo" para tunear | `stream-a` |
+| **2317SECH** | **B — MCP & Bridge** | Trabajo de dev (C# AddOn + Node TS MCP), arranca sin Apex | `stream-b` |
+| **ptala611-oss** | **C — Infra, Riesgo & Ops** | Calendar CME, consistencia, alertas, runbook — independiente de Apex | `stream-c` |
+
+> La asignación es por encaje lógico. Si las habilidades reales difieren, **B y C se pueden
+> intercambiar** sin problema. **A debe quedarse con quien tenga NinjaTrader 8 instalado.**
+> Cada persona le dice a SU Claude: *"soy stream-X, lee CLAUDE.md + PLAN.md + BITACORA.md + TAREAS.md"*.
+
+### Primeras acciones por persona (esta semana)
+
+**Spoke186 (Stream A + inputs operador)**
+1. Comprar Apex 50K (N1) y pasar al equipo: versión NT8 (N2), conexión Rithmic/Tradovate (N3), NQ vs MNQ (N5), cuál PC es PC-LIVE (N6).
+2. Decidir visibilidad del repo (N9).
+3. Poner `ApexNqIctStrategy.cs` **y** `ntaddon/ApexBridgeAddOn.cs` en `bin\Custom\`, compilar (A2).
+4. Backtest en Strategy Analyzer (A3) → tuning (A4).
+
+**2317SECH (Stream B) — puede arrancar YA, sin Apex**
+1. `git clone` + `git checkout -b stream-b`.
+2. `cd mcp` → `npm install` → `npm run build` (B4).
+3. Leer `ntaddon/ApexBridgeAddOn.cs` y `mcp/src/index.ts`; dejar B3 con placeholders.
+4. Preparar registro en `.mcp.json`. Esperar N3/N4/N5 para datos reales (B3) y N6 para probar el loop (B5).
+
+**ptala611-oss (Stream C) — puede arrancar YA, sin Apex**
+1. `git clone` + `git checkout -b stream-c`.
+2. C1: `market_calendar` (festivos/medias sesiones CME).
+3. C2: módulo consistencia 50% lun–vie (lógica + persistencia P&L) para que A lo integre.
+4. C5: runbook de operación. Esperar N8 (Telegram) para C3 y N6 para C4 (VPS).
+
+---
+
 ## División del trabajo
 
 ### Stream A — Estrategia & Backtest
@@ -80,9 +114,9 @@ Arrancar en paralelo: A compila+backtest, B scaffold AddOn+MCP, C calendar+alert
 ## Estado global (actualizar al mergear)
 | Stream | Branch | Último hito | Estado |
 |--------|--------|-------------|--------|
-| A | stream-a | Estrategia base + cap riesgo + toggle MCP | 🚧 falta compilar/backtest |
-| B | stream-b | Scaffold AddOn C# + MCP Node TS escritos | 🚧 falta datos Apex + compilar/probar |
-| C | stream-c | — | ⬜ no iniciado |
+| A (Spoke186) | stream-a | Estrategia base + cap riesgo + toggle MCP | 🚧 falta compilar/backtest |
+| B (2317SECH) | stream-b | Scaffold AddOn C# + MCP Node TS escritos | 🚧 falta datos Apex + compilar/probar |
+| C (ptala611-oss) | stream-c | — | ⬜ no iniciado |
 
 > **Integración A↔B:** `ApexNqIctStrategy.cs` referencia `ApexBridgeState` (en el AddOn).
 > Ambos `.cs` deben estar en `bin\Custom\` antes de compilar, o falla por símbolo faltante.
