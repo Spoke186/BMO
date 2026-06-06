@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "apex-nt8-mcp": {
+      "command": "node",
+      "args": ["mcp/dist/index.js"],
+      "env": {
+        "BRIDGE_URL": "http://127.0.0.1:8731",
+        "BRIDGE_TOKEN": "CHANGE_ME_LOCAL_TOKEN"
+      }
+    }
+  }
+}
