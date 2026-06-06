@@ -68,6 +68,18 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 9 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: A3 — primer compile limpio en NT8.**
+
+- **A3 (compile) ✅ confirmado:** Esteban hizo F5 sin errores y `ApexNqIctStrategy` **aparece en el
+  Strategy Analyzer** → compiló limpio en la assembly Custom (con los 6 `.cs`, incl. el fallback
+  overnight de SECH `9d80495`). Primer compile limpio del proyecto. TAREAS A3 → ✅.
+- **Pendiente inmediato A7 (backtest):** correr en Strategy Analyzer — NQ **1m**, 3–6 meses,
+  **sesión Globex/24h (ETH)**. Verificar `[PRE-AP]` en NinjaScript Output: si dice "SIN datos
+  overnight" → cambiar a ETH y re-correr. Con # trades >0 → exportar y pasar por `analyze_backtest.py`.
+- **Sin cambios de código** (solo verificación + docs).
+
 ### 2026-06-06 — Sesión 8 (Claude Stream A en PC de Esteban / Spoke186)
 
 **Tema: revisar lo nuevo de Sergio (fallback overnight + PR #19) y globalizar A3/A7.**
@@ -320,7 +332,7 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 ### Stream A — Estrategia & Backtest
 - [x] Review compile de `.cs` (verdict: compila). Ver `backtest/PREFLIGHT.md`.
 - [x] Analizador de backtest `backtest/analyze_backtest.py` (+ tests).
-- [ ] Compilar `.cs` en NT8 (F5) — **bloqueado: NT8 en mantenimiento**. AddOn también en `bin\Custom\`.
+- [x] Compilar `.cs` en NT8 (F5) — ✅ **sesión 9: compila limpio** (aparece en Strategy Analyzer en el PC de Esteban).
 - [ ] Backtest Strategy Analyzer (3–6 meses NQ 5m) → correr `analyze_backtest.py` sobre el export.
 - [ ] Tuning displacement/FVG/pivotes (A4).
 - [x] **Integrar `infra/DailyPnlTracker.cs` en la estrategia** → consistencia 50% en tiempo real (A5).

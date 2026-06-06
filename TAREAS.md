@@ -32,7 +32,7 @@
 |-------|--------|-----------|
 | A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
 | A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
-| A3 Compilar en NT8 (F5) limpio | ⬜ **compartida: Esteban o Sergio** (ambos tienen NT8 editor) | A2 |
+| A3 Compilar en NT8 (F5) limpio | ✅ **confirmado** (Esteban, sesión 9: aparece en Strategy Analyzer = compiló limpio) | A2 |
 | A4 Ventana entrada `.md` §3 = **9:30–14:00 ET** | ✅ `KillZoneEnd=1400` (operador: "entra cuando quiera") | A3 |
 | A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
 | A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
