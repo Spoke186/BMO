@@ -89,6 +89,17 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
   no corromper el JSON ni colapsar días en backtest. Brace/paren balance OK. Actualizado PREFLIGHT
   (3 .cs en `bin\Custom`) y CLAUDE.md.
 
+### 2026-06-05 — Sesión 3 (Claude Stream B/C en PC de Sergio — continuación)
+
+- **DoD Stream B completado:**
+  - `mcp/test-tools.mjs`: suite 6 tests (mock AddOn HTTP + MCP stdio). **6/6 PASS**.
+    Cubre: get_account, get_position, get_today_trades, enable_strategy, disable_strategy, check_market.
+    No requiere NT8. Correr con `node mcp/test-tools.mjs` desde raíz.
+  - `README.md`: añadida sección **MCP — Control y monitoreo desde Claude Code** (setup, tools, test).
+  - `infra/VPS_RESEARCH.md`: comparativa Vultr Chicago / Contabo / AWS EC2 / Kamatera.
+    **Recomendación: Vultr Chicago ~$40/mes** para Eval Apex. No VPS hasta entonces (Sim en PC propia).
+- **Git:** branch `stream-b-v2`, PR pendiente a main.
+
 ### 2026-06-05 — Sesión 2 (Claude Stream B/C en PC de Sergio)
 
 - **B4 completo:** `npm install` + `npm run build` en `mcp/` → build limpio (0 errores TS).

@@ -107,3 +107,67 @@ Riesgo vs Apex 50K: un stop = **−$250** (< daily loss $400) y queda lejos del 
 3. TP "siguiente liquidez" (fase 2).
 4. Alertas Telegram (vía `AddOn` o webhook externo).
 5. Multi-timeframe / order blocks si el backtest lo justifica.
+
+---
+
+## MCP — Control y monitoreo desde Claude Code
+
+El servidor MCP (`apex-nt8-mcp`) permite consultar el estado del bot y habilitarlo/deshabilitarlo
+desde Claude Code sin tocar NinjaTrader manualmente.
+
+### Requisitos
+
+- Node.js LTS (18+)
+- `ntaddon/ApexBridgeAddOn.cs` compilado y corriendo en NT8 (ver Instalación)
+
+### Setup (una sola vez por PC)
+
+**1. Copiar variables de entorno**
+```bash
+cp .env.example .env
+# Editar .env: cambiar BRIDGE_TOKEN por un string secreto propio
+```
+
+> El mismo token debe estar en `ntaddon/ApexBridgeAddOn.cs` (campo `Token`). Cámbialo antes del
+> primer uso real. No subas `.env` al repo.
+
+**2. Instalar dependencias y compilar**
+```bash
+cd mcp
+npm install
+npm run build
+```
+
+> `mcp/dist/index.js` ya está commiteado — si no quieres instalar Node, puedes saltar este paso
+> mientras no modifiques `mcp/src/index.ts`.
+
+**3. Registrar en Claude Code**
+
+El archivo `.mcp.json` en la raíz ya registra el servidor. Claude Code lo detecta automáticamente
+al abrir el proyecto. Verifica que esté activo:
+
+```
+/mcp
+```
+
+Deberías ver `apex-nt8-mcp` en la lista con los 6 tools disponibles.
+
+### Tools disponibles
+
+| Tool | Qué hace |
+|------|----------|
+| `get_account` | Balance, P&L realizado/no realizado, trading enabled |
+| `get_position` | Posición actual (FLAT/LONG/SHORT, contratos, precio) |
+| `get_today_trades` | Trades del día (placeholder hasta integrar con Stream A) |
+| `enable_strategy` | Habilita el bot → puede armar nuevos setups |
+| `disable_strategy` | Apaga el bot → no arma setups (no cierra posición abierta) |
+| `check_market` | ¿Es hoy día hábil CME? Festivos, medias sesiones, kill zone |
+
+### Verificar que funciona (sin NT8)
+
+```bash
+# Desde la raiz del repo:
+node mcp/test-tools.mjs
+```
+
+Levanta un mock del AddOn y prueba los 6 tools. Salida esperada: `6/6 tests OK`.
