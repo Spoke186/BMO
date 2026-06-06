@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RestorePackages>false</RestorePackages>
+    <NuGetRestoreTargets>false</NuGetRestoreTargets>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <!-- NinjaScript no usa nullable ni usings implicitos -->
+  </PropertyGroup>
+
+  <!-- DLLs de NinjaTrader 8 para que VS Code resuelva los tipos -->
+  <ItemGroup>
+    <Reference Include="NinjaTrader.Core">
+      <HintPath>C:\Program Files\NinjaTrader 8\bin\NinjaTrader.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="NinjaTrader.Gui">
+      <HintPath>C:\Program Files\NinjaTrader 8\bin\NinjaTrader.Gui.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Excluir carpetas que no son C# -->
+  <ItemGroup>
+    <Compile Remove="mcp\**" />
+    <Compile Remove="backtest\**" />
+    <None Include="mcp\**" />
+    <None Include="backtest\**" />
+  </ItemGroup>
+
+</Project>

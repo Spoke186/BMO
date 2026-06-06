@@ -100,6 +100,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Max daily loss propio (USD)", Order = 17, GroupName = "4. Riesgo Apex")]
 		public double MaxDailyLoss { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Habilitar Setup B (sweep directo sin FVG)", Order = 18, GroupName = "2. Estrategia")]
+		public bool EnableSetupB { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -138,6 +142,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private int    fvgArmedBar;     // CurrentBars[0] (1m) cuando se armo el setup
 		private bool   priceInFvg;      // precio ya toco la zona FVG al menos una vez
 		private Order  entryOrder;
+
+		// Signal name del trade activo (para ExitLong/Short correcto con Setup A y B).
+		private string activeSignal;
 
 		// Control de riesgo / dia
 		private bool   tradedToday;
@@ -188,9 +195,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 				FvgValidBars         = 60;    // 1m bars (~1h para que el precio retroceda al FVG)
 				SweepChochMaxBars15m = 4;     // barras 15m para ver CHoCH despues de la barrida
 				StopBufferTicks      = 2;
+				EnableSetupB         = true;
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia)
-				KillZoneEnd          = 1400;  // 14:00 ET (.md §3): ventana de ejecucion 09:30–14:00, el
-				                             // bot entra en cuanto el setup se forme (operador: "cuando quiera")
+				KillZoneEnd          = 1100;  // 11:00 ET = Colombia 10:00 (EDT). En EST (invierno): 1000.
 				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas; posicion abierta corre a TP/SL
 				                             // (operador G3: "dejar que termine, 1 oportunidad/dia")
 				StartingBalance      = 50000;
@@ -324,6 +331,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				ManageSetup1m(inKillZone);
 			}
+
+			// Setup B: sweep del rango pre-mercado en 1m sin esperar CHoCH+FVG.
+			// preMarketReady garantiza que los niveles estan disponibles.
+			if (EnableSetupB && preMarketReady && inKillZone
+			    && !tradedToday && !tradingDisabled && setupState == 0)
+				TryDetectSweepB();
 
 			PublishState();
 		}
@@ -564,6 +577,47 @@ namespace NinjaTrader.NinjaScript.Strategies
 		}
 		#endregion
 
+		#region Setup B: Opening Range Sweep (entrada directa sin FVG)
+		private void TryDetectSweepB()
+		{
+			if (!ApexBridgeState.TradingEnabled) return;
+
+			// Sweep del HIGH pre-mercado en 1m: mecha lo perfora, cierre recupera abajo + vela bajista.
+			// Patron: liquidez arriba barrida → SHORT inmediato (sin esperar CHoCH ni FVG).
+			if (High[0] > preMarketHigh && Close[0] < preMarketHigh && Close[0] < Open[0])
+			{
+				EnterSweepB(-1);
+				return;
+			}
+
+			// Sweep del LOW pre-mercado en 1m: mecha lo perfora, cierre recupera arriba + vela alcista.
+			if (Low[0] < preMarketLow && Close[0] > preMarketLow && Close[0] > Open[0])
+			{
+				EnterSweepB(1);
+			}
+		}
+
+		private void EnterSweepB(int dir)
+		{
+			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
+			{
+				Print("[CONSISTENCIA] SweepB saltado: violaria regla 50% Apex.");
+				return;
+			}
+
+			string sig = dir == 1 ? "LongSweep" : "ShortSweep";
+			SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
+			SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
+
+			if (dir == 1)
+				EnterLong(0, Contratos, sig);
+			else
+				EnterShort(0, Contratos, sig);
+
+			Print($"[SETUP-B] {sig} PreMkt=[{preMarketLow:F2},{preMarketHigh:F2}]");
+		}
+		#endregion
+
 		#region Tracking swings 1m (para mini-CHoCH)
 		private void Track1mSwings()
 		{
@@ -595,6 +649,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			preMarketLow       = double.MaxValue;
 			preMarketReady     = false;
 			preMarketAttempted = false;
+			activeSignal       = "";
 			sessionStartCumPnl = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
 			lock (ApexBridgeState.TodayTradesLock)
 				ApexBridgeState.TodayTrades.Clear();
@@ -729,9 +784,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			entryOrder = null;
 
 			if (Position.MarketPosition == MarketPosition.Long)
-				ExitLong("LongFVG");
+				ExitLong(!string.IsNullOrEmpty(activeSignal) ? activeSignal : "LongFVG");
 			else if (Position.MarketPosition == MarketPosition.Short)
-				ExitShort("ShortFVG");
+				ExitShort(!string.IsNullOrEmpty(activeSignal) ? activeSignal : "ShortFVG");
 			setupState = 0;
 		}
 
@@ -740,7 +795,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			DateTime time, ErrorCode error, string nativeError)
 		{
 			if (order == null) return;
-			if (order.Name == "LongFVG" || order.Name == "ShortFVG")
+			if (order.Name == "LongFVG"   || order.Name == "ShortFVG" ||
+			    order.Name == "LongSweep" || order.Name == "ShortSweep")
 				entryOrder = order;
 		}
 
@@ -748,13 +804,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 			double price, int quantity, MarketPosition marketPosition, string orderId, DateTime time)
 		{
 			if (execution.Order == null) return;
-			if ((execution.Order.Name == "LongFVG" || execution.Order.Name == "ShortFVG")
+			if ((execution.Order.Name == "LongFVG"   || execution.Order.Name == "ShortFVG" ||
+			     execution.Order.Name == "LongSweep" || execution.Order.Name == "ShortSweep")
 			    && execution.Order.OrderState == OrderState.Filled)
 			{
 				tradedToday    = true;
 				setupState     = 0;
+				activeSignal   = execution.Order.Name;
 				lastEntryPrice = price;
-				lastEntryDir   = execution.Order.Name == "LongFVG" ? 1 : -1;
+				lastEntryDir   = (execution.Order.Name == "LongFVG" || execution.Order.Name == "LongSweep") ? 1 : -1;
 
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
 					$"{(lastEntryDir == 1 ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
