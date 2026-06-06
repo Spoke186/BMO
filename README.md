@@ -154,7 +154,7 @@ al abrir el proyecto. Verifica que esté activo:
 /mcp
 ```
 
-Deberías ver `apex-nt8-mcp` en la lista con los 6 tools disponibles.
+Deberías ver `apex-nt8-mcp` en la lista con los 7 tools disponibles.
 
 ### Tools disponibles
 
@@ -162,7 +162,8 @@ Deberías ver `apex-nt8-mcp` en la lista con los 6 tools disponibles.
 |------|----------|
 | `get_account` | Balance, P&L realizado/no realizado, trading enabled |
 | `get_position` | Posición actual (FLAT/LONG/SHORT, contratos, precio) |
-| `get_today_trades` | Trades del día (placeholder hasta integrar con Stream A) |
+| `get_today_trades` | Trades del día (real: dirección, entrada/salida, P&L, resultado) |
+| `get_setup_state` | Estado ICT en vivo: sesgo 15m, rango pre-apertura, barrida, CHoCH+FVG armado, si ya operó hoy |
 | `enable_strategy` | Habilita el bot → puede armar nuevos setups |
 | `disable_strategy` | Apaga el bot → no arma setups (no cierra posición abierta) |
 | `check_market` | ¿Es hoy día hábil CME? Festivos, medias sesiones, kill zone |
@@ -174,4 +175,5 @@ Deberías ver `apex-nt8-mcp` en la lista con los 6 tools disponibles.
 node mcp/test-tools.mjs
 ```
 
-Levanta un mock del AddOn y prueba los 6 tools. Salida esperada: `6/6 tests OK`.
+Levanta un mock del AddOn y prueba los 7 tools. Salida esperada: `7/7 tests OK`.
+(El mock no puede correr si el AddOn real ya ocupa el puerto 8731 — cierra NT8 o el proceso primero.)
