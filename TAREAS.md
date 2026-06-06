@@ -32,11 +32,11 @@
 |-------|--------|-----------|
 | A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
 | A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
-| A3 Compilar en NT8 (F5) limpio | ⬜ | A2 |
+| A3 Compilar en NT8 (F5) limpio | ⬜ **compartida: Esteban o Sergio** (ambos tienen NT8 editor) | A2 |
 | A4 Ventana entrada `.md` §3 = **9:30–14:00 ET** | ✅ `KillZoneEnd=1400` (operador: "entra cuando quiera") | A3 |
 | A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
 | A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
-| A7 Backtest Strategy Analyzer (NQ, primaria 1m + 15m, 3–6 meses) | ⬜ | A3 |
+| A7 Backtest Strategy Analyzer (NQ, primaria 1m + 15m, 3–6 meses) | ⬜ **compartida** (cualquier PC con NT8 + datos Globex/24h overnight) | A3 |
 | A8 Tuning params `.md` §13 (N velas swing, gap mín FVG, ratio rechazo 1m) | ⬜ | A7 |
 | A9 2da operación opcional si la 1ra fue ganadora (`.md` §1/§11) | ⬜ fase 2 | A7 |
 | A10 Consistencia 50% integrada (`DailyPnlTracker`) | ✅ falta validar en Sim | C2 |
@@ -49,14 +49,19 @@
 | B3 Rellenar `AccountName`/`InstrumentName`/`Token`→env | 🚧 env listo (Sim101/NQ); valores Apex esperan N4 | N4 |
 | B4 `npm install`+`build`+registrar en `.mcp.json` | ✅ | — |
 | B5 Probar loop Claude→MCP→AddOn→NT8 (en Sim) | ⛔ | A3, B3, N6 |
-| B6 `get_today_trades` real | ⬜ | A/C |
-| B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | ⬜ | A3 |
+| B6 `get_today_trades` real | 🚧 **PR #19** (`/trades/today` real + `TodayTrades`); no mergeado: falta `using` (no compila) | A/C |
+| B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | 🚧 **PR #19** (`PublishState`+`/setup`+tool `get_setup_state` v0.3.0); no mergeado: falta `using` | A3 |
 | B8 Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring) | ✅ PR #16; inerte sin `NOTION_API_KEY` (N11) | — |
 
 > **Handoff Sergio (sesión 7):** `main` limpio, contrato A↔B vivo (`ApexBridgeState.TradingEnabled`,
 > ya consultado por la estrategia). **Puede avanzar YA con mock (sin NT8/Apex):** B6 (definir contrato
 > real de `/trades/today`) y B7 (tool de monitoreo del setup). ⚠️ Si el Sim corre **MNQ**, exportar
 > `APEX_INSTRUMENT=MNQ` o `/position` del AddOn filtra mal (`StartsWith("NQ")`, línea 196).
+
+> **PR #19 (Sergio, B6+B7) — sesión 8:** revisado, **alinea** (`PublishState` es espejo read-only,
+> no toca lógica de trading). 🔴 **NO mergear: no compila** — falta `using System.Collections.Generic;`
+> en `ntaddon/ApexBridgeAddOn.cs` (usa `List<TradeSummary>`, líneas 69/245/247 → **CS0246**).
+> **Sergio:** añade ese using, F5 en su NT8 para verificar (A3 ya es compartida) y mergea.
 
 ### Stream C — Infra, Riesgo & Ops  (dueño: `/infra`, `/utils`, `/alerts`)
 | Tarea | Estado | Depende de |

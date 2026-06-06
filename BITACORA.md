@@ -68,6 +68,26 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 8 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: revisar lo nuevo de Sergio (fallback overnight + PR #19) y globalizar A3/A7.**
+
+- **`9d80495` (ya en `main`, de 2317SECH) revisado:** fix "fallback 15m cuando no hay datos overnight".
+  Si el 1m es RTH-only, escanea la serie 15m hacia atrás (≤24 barras) buscando barras <9:30 ET y
+  reconstruye el rango pre-apertura; si **ambas** series son RTH, Print claro y 0 setups. **Sano,
+  alinea con `.md` (sigue usando rango pre-apertura como liquidez), no rompe lógica.** Aprobado.
+- **PR #19 (Sergio, B7 + B6) revisado:** expone estado ICT (`PublishState()` = espejo **read-only** a
+  `ApexBridgeState`, **NO toca lógica de trading**) + `GET /setup` + `/trades/today` real
+  (`TodayTrades` + `TradeSummary`) + tool MCP `get_setup_state` (v0.3.0) + test #7. **Bien hecho y
+  alinea.** 🔴 **Pero NO compila:** falta `using System.Collections.Generic;` en
+  `ntaddon/ApexBridgeAddOn.cs` (usa `List<TradeSummary>`, líneas 69/245/247 → **CS0246**). **NO se
+  mergeó.** Decisión operador: Sergio lo arregla (1 línea) + F5 en su NT8.
+- **Dato nuevo: 2317SECH (Sergio) también tiene NinjaTrader 8 (editor).** → **A3 (F5/compile) y A7
+  (backtest) dejan de ser exclusivos de Esteban; cualquiera de los 2 PCs con NT8 puede correrlos.**
+  PC-LIVE (N6, corre 24/5 en vivo) sigue siendo decisión aparte. Registrado en PLAN §Asignación y §5.
+- **Docs actualizados:** TAREAS (A3/A7 compartidas, B6/B7→PR #19, nota PR #19), PLAN (nota NT8 en 2 PCs).
+- **Sin cambios de código este turno** (solo review + docs).
+
 ### 2026-06-06 — Sesión 7 (Claude Stream A en PC de Esteban / Spoke186)
 
 **Tema: auditoría lógica `.cs` vs `.md`, reconciliar docs, mergear PR #17 y dejar `main` listo para Stream B (Sergio).**
@@ -326,6 +346,8 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - **Repo:** https://github.com/Spoke186/BMO · branch principal `main`.
 - **Owner:** Spoke186. **Colaboradores:** 2317SECH, ptala611-oss (ambos **aceptaron**, write activo).
 - **gh CLI:** v2.93.0, autenticado como Spoke186 en el PC de Esteban.
+- **NinjaTrader 8:** instalado en el PC de **Esteban (Spoke186)** y en el de **Sergio (2317SECH)**.
+  → A3 (compile/F5) y A7 (backtest) se pueden correr en cualquiera de los 2. PC-LIVE (N6) sin definir.
 - **Flujo git:** cada stream en su branch (`stream-a/b/c`), PR a `main`, dueño de sus carpetas.
 - **Secretos:** nunca en repo. `.env` y `settings.local.json` en `.gitignore`. Token del AddOn →
   variable de entorno (TODO).
