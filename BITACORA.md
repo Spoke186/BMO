@@ -97,6 +97,23 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - **MCP validado local:** `npm install` en `mcp/` + `node mcp/test-tools.mjs` → **6/6 OK** en PC de Esteban.
 - **N9 decidido:** repo sigue **PÚBLICO**.
 
+### 2026-06-05 — Sesión 1 (Claude Stream C en PC de ptala611-oss)
+
+- **Sync inicial:** pull desde `origin/main` (15 commits nuevos de streams A y B). Revisado estado completo.
+- **Gap detectado:** `infra/marketCalendar.ts` cubre el MCP (TypeScript) pero la estrategia NinjaScript
+  no tenía guardia de festivos CME. Los viernes y festivos, `OnBarUpdate` evaluaría setups en mercado cerrado.
+- **C1b completo:** `infra/MarketCalendar.cs` — versión C# de MarketCalendar para NinjaScript.
+  Festivos CME 2026/2027 + medias sesiones. API: `ShouldSkipToday()`, `IsHoliday()`, `IsHalfSession()`,
+  `BotForceCloseTime()` (1555 normal / 1245 media sesión). Stream A debe integrar en `OnBarUpdate`.
+- **C3 parcial:** `alerts/TelegramAlerts.cs` — módulo de alertas Telegram completo, activable sin cambios
+  de código al pasar N8. Lee `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` del entorno. Mensajes tipados:
+  BotStart/Stop, TradeOpened/Closed, DailyLossWarning, ConsistencyWarning, StrategyError, Heartbeat.
+  Fire-and-forget via `Task.Run`. Token nunca en código. Bloqueado solo el encendido (espera N8).
+- **`.env.example` actualizado:** añadidas `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` con instrucciones
+  para obtener token (@BotFather) y chat id (getUpdates).
+- **TAREAS.md actualizado:** C1b/C3/C6 añadidas; estados sincronizados con lo que hicieron A y B.
+- **Branch:** `stream-c`. PR pendiente a `main`.
+
 ### 2026-06-05 — Sesión 3 (Claude Stream B/C en PC de Sergio — continuación)
 
 - **DoD Stream B completado:**
