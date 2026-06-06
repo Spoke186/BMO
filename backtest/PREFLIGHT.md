@@ -6,34 +6,41 @@
 
 ## 0. Antes de F5
 
-- [ ] Copiar los **tres** `.cs` a `Documents\NinjaTrader 8\bin\Custom\`:
+- [ ] Copiar los **seis** `.cs` a `Documents\NinjaTrader 8\bin\Custom\`:
   - `ApexNqIctStrategy.cs`  → `bin\Custom\Strategies\`
   - `ntaddon\ApexBridgeAddOn.cs` → `bin\Custom\AddOns\`
   - `infra\DailyPnlTracker.cs` → `bin\Custom\Strategies\` (namespace `...Strategies`)
-  - **Motivo:** la estrategia referencia `ApexBridgeState` (del AddOn) **y** `DailyPnlTracker`
-    (consistencia 50%). Si falta alguno, F5 falla por símbolo inexistente. Los tres compilan en la
-    MISMA assembly Custom.
+  - `infra\MarketCalendar.cs` → `bin\Custom\Strategies\` (festivos CME + cierre media sesión)
+  - `alerts\TelegramAlerts.cs` → `bin\Custom\Strategies\` (inerte sin token N8)
+  - `infra\NotionLogger.cs` → `bin\Custom\Strategies\` (bitácora DEMO, inerte sin `NOTION_API_KEY`)
+  - **Motivo:** la estrategia referencia `ApexBridgeState` (AddOn), `DailyPnlTracker`, `MarketCalendar`,
+    `TelegramAlerts` y `NotionLogger`. Si falta alguno, F5 falla por símbolo inexistente. Todos
+    compilan en la MISMA assembly Custom.
   - Nota: `DailyPnlTracker` solo se activa en **tiempo real** (Sim/live), no en backtest. En backtest
     la consistencia 50% la valida `analyze_backtest.py`.
 
 ## 1. A2 — Compilar (F5)
 
 - [ ] NinjaScript Editor → F5.
-- [ ] 0 errores. Si aparece error en `ATR(BarsArray[0], 14)` (línea 161): cambiar a `ATR(14)`
-  (el ATR está atado a la serie primaria 5m, que es la default; equivalente y 100% seguro).
+- [ ] 0 errores. El ATR es `ATR(BarsArray[1], 14)` (atado a la serie 15m). Si tu versión NT8 se queja
+  del overload con `BarsArray`, validar la firma (N2).
 - [ ] Si error en `SetStopLoss`/`SetProfitTarget`: verificar firma contra tu versión NT8 (N2).
 
 ## 2. Aplicar a gráfico — verificar params
 
-- [ ] Gráfico **NQ** (contrato vigente, ej `NQ 09-26`), periodicidad **5 minutos**.
-  - **Crítico:** la serie primaria DEBE ser 5m. El código hace `AddDataSeries(Minute, 15)` para el
-    sesgo. Si el primario no es 5m, toda la lógica de ejecución se corre de timeframe.
+- [ ] Gráfico **NQ** (contrato vigente, ej `NQ 09-26`), periodicidad **1 minuto** (gatillo).
+  - **Crítico:** la serie primaria DEBE ser 1m. El código hace `AddDataSeries(Minute, 15)` para el
+    sesgo/sweep/CHoCH/FVG. Si el primario no es 1m, toda la lógica de ejecución se corre de timeframe.
+  - **Crítico (G4):** el gráfico DEBE incluir datos **overnight** (template Globex/24h, NO RTH-only).
+    El rango pre-apertura (sweep) se mide en barras 1m desde apertura de sesión hasta 09:30 ET. Sin
+    overnight, `preMarketReady` nunca se arma → **cero setups** (backtest vacío).
 - [ ] Aplicar `ApexNqIctStrategy`. Confirmar inputs default:
-  - Contratos = **2**, Stop = **$250**, Target = **$700**, kill zone **830–1100**, cierre **1555**.
+  - Contratos = **2**, Stop = **$250**, Target = **$700**, ventana **930–1400** ET (forced exit 1400:
+    no abre nuevas, deja correr la abierta).
 
 ## 3. ⚠️ GOTCHA timezone (revisar SÍ o SÍ)
 
-El código usa `ToTime(Time[0])` para la kill zone (8:30–11:00) y el cierre forzado (15:55).
+El código usa `ToTime(Time[0])` para la ventana (09:30–14:00 ET) y el forced exit (14:00 ET).
 `ToTime` devuelve la hora **en la zona horaria del gráfico**, no en ET.
 
 - Colombia = UTC-5 todo el año. ET = UTC-5 en invierno, **UTC-4 en horario de verano (mar–nov)**.
@@ -43,8 +50,8 @@ El código usa `ToTime(Time[0])` para la kill zone (8:30–11:00) y el cierre fo
 
 ## 4. A3 — Backtest (Strategy Analyzer)
 
-- [ ] Strategy Analyzer → `ApexNqIctStrategy` → NQ 5m, **3–6 meses**.
-- [ ] Data series: 5m (el 15m lo añade el código solo).
+- [ ] Strategy Analyzer → `ApexNqIctStrategy` → NQ **1m**, **3–6 meses**, datos **Globex/24h**.
+- [ ] Data series: 1m primaria (el 15m lo añade el código solo).
 - [ ] Correr. Anotar en el chat/repo: **win rate, profit factor, max drawdown, # trades, avg trade**.
 
 ## 5. Observaciones para el tuning (A4) — NO bloquean compilar

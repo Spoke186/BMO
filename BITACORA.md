@@ -68,6 +68,36 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 6 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: resolver gaps G2/G3/G4 + mergear bitácora Notion de SECH (PR #16).**
+
+- **NT8 conectado y operativo** (Tradovate Sim, MNQ JUN26 en gráfico). F5 mostró el editor con la
+  estrategia cargada; A3 (compilar limpio + backtest) sigue pendiente del operador.
+- **PR #16 de SECH mergeado a `main`** (`feat(notion)`): trae 2 commits →
+  1. **Bitácora DEMO Notion:** `infra/NotionLogger.cs` (registra apertura+cierre de cada trade en
+     una BD Notion vía REST, sin libs externas) + wiring en la estrategia (campo `notion`, init en
+     `State.Realtime`, apertura en `OnExecutionUpdate`, cierre en `RecordClosedTrades`) +
+     `instrucciones_bot_bitacora_demo_backtesting.md`. **Inerte sin `NOTION_API_KEY`** (N11).
+  2. **G4 (rango pre-apertura):** SECH lo implementó en barras **1m** (`preMarketHigh/Low`, hasta
+     9:30 ET, reset en `ResetForNewSession`). Es la versión que queda.
+- **Conflicto detectado y resuelto por el operador:** yo había alineado G2/G3/G4 al `.md` en local,
+  pero el PR #16 de SECH marcaba G2/G3 como decisiones intencionales del operador (opuesto). Se
+  preguntó y el operador decidió:
+  - **G2 (ventana entrada):** "el bot entra cuando quiera" → **09:30–14:00 ET**. `KillZoneEnd 1100→1400`
+    (mi commit sobre el merge). Antes SECH lo tenía en 1100.
+  - **G3 (qué pasa a las 14:00):** **dejar correr a TP/SL** (NO cerrar total, pese a `.md` §11).
+    Se mantiene el `ForcedExit` que solo bloquea entradas nuevas. Mi flatten local fue descartado.
+  - **G4:** se queda la **implementación 1m de SECH** (descarté mi versión 15m por menor fricción;
+    SECH es dueño de la estrategia).
+- **Resultado en código:** sobre el merge de #16, único cambio propio = `KillZoneEnd=1400`. El resto
+  (G3 block-only, G4 1m, Notion) es de SECH y queda intacto.
+- **Docs:** TAREAS (A1/A2/A4/A5/A6 + tabla gaps + B8 Notion + N11), CLAUDE.md (estrategia 2/9 + roadmap 6)
+  y PREFLIGHT (6 .cs, primario **1m**, ventana 930–1400, **requisito datos overnight Globex/24h** para G4)
+  actualizados. ⚠️ Sin datos overnight, `preMarketReady` no se arma → cero setups en backtest.
+- **Sync NT8:** los `.cs` finales copiados a `bin\Custom`. Brace balance OK.
+- **Pendiente:** A3 (F5 + backtest), validar consistencia en Sim, N11 (token Notion) para encender bitácora.
+
 ### 2026-06-06 — Sesión 5 (Claude Stream A en PC de Esteban / Spoke186)
 
 **Tema: acoplar lo nuestro a la estrategia de SECH + dejar todo compilable.**

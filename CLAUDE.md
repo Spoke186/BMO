@@ -16,14 +16,14 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 ## Estrategia (decidida)
 ICT continuación de tendencia — **temporalidades: 15m sesgo/FVG, 1m gatillo**:
 1. **Tendencia** = estructura HH/HL en **15m** (pivote fractal, fuerza 3).
-2. **Sweep** de liquidez contra-tendencia en **15m** (perfora último swing del rango pre-apertura y el cierre recupera).
+2. **Sweep** de liquidez contra-tendencia en **15m** (perfora el **máx/mín del rango pre-apertura** —medido en barras 1m desde apertura de sesión hasta 9:30 ET— y el cierre recupera). Requiere datos overnight (Globex/24h) en el gráfico.
 3. **CHoCH + Desplazamiento** en **15m**: tras la barrida, vela cierra más allá del último swing en dirección tendencia Y cuerpo ≥ 1.5×ATR(14). Confirma reversión institucional.
 4. **FVG** de 3 velas en **15m** (gap mínimo 6 pts, en el impulso del CHoCH).
 5. **Retroceso al FVG** en **1m**: esperar que el precio entre a la zona del gap.
 6. **Confirmación en 1m** (al menos una): vela de rechazo (mecha/cuerpo ≥ 1.5) O mini-CHoCH en 1m dentro del FVG.
 7. **Entrada** = mercado al cierre de la vela de confirmación 1m, a favor de tendencia.
 8. **Stop $250 fijo / TP $700 fijo** (1:3 RR). 2 contratos fijos siempre.
-9. **Ventana** NY 9:30–14:00 ET (08:30–13:00 Colombia), cierre forzado 14:00 ET, **1 setup/día**.
+9. **Ventana** NY 9:30–14:00 ET (08:30–13:00 Colombia), **1 setup/día**. A las 14:00 ET el bot **deja de abrir** nuevas entradas; una posición ya abierta **corre hasta su TP/SL** (decisión operador, NO cierre total — el cierre de sesión NT8 la aplana al final si sigue viva).
 
 ## Riesgo Apex en el código
 - ✅ Stop obligatorio, no DCA, 1 entrada/setup, ventana horaria, max daily loss ($400).
@@ -47,6 +47,8 @@ ICT continuación de tendencia — **temporalidades: 15m sesgo/FVG, 1m gatillo**
    se activa al poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (N8). Heartbeat timer opcional sin cablear.
 5. Calendario CME (`infra/MarketCalendar.cs`) integrado: skip festivo/finde + cierre 12:45 media sesión.
    **Mantenimiento:** fechas hardcoded 2026–2027; actualizar cada diciembre.
+6. Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring, PR #16 de SECH): registra cada trade
+   (apertura + cierre) en una BD Notion. Inerte sin `NOTION_API_KEY` (N11). DB id hardcoded en el `.cs`.
 
 ## Reglas de trabajo
 - Si una decisión técnica contradice este archivo, **pregunta antes de avanzar**.

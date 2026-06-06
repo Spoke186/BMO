@@ -188,8 +188,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				SweepChochMaxBars15m = 4;     // barras 15m para ver CHoCH despues de la barrida
 				StopBufferTicks      = 2;
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia)
-				KillZoneEnd          = 1100;  // 11:00 ET (10:00 Colombia, horario verano EE.UU.)
-				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas, trade activo sigue
+				KillZoneEnd          = 1400;  // 14:00 ET (.md §3): ventana de ejecucion 09:30–14:00, el
+				                             // bot entra en cuanto el setup se forme (operador: "cuando quiera")
+				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas; posicion abierta corre a TP/SL
+				                             // (operador G3: "dejar que termine, 1 oportunidad/dia")
 				StartingBalance      = 50000;
 				TrailingDrawdown     = 2500;
 				MaxDailyLoss         = 400;

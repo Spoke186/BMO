@@ -21,6 +21,7 @@
 | N8 | Token bot **Telegram** + chat id | Operador | Alertas (Stream C) | ⬜ (después) |
 | N9 | Visibilidad repo | Operador | Seguridad | ✅ **PÚBLICO** |
 | N10 | **Valor de punto** del contrato confirmado con la firma | Operador | Fija stop/target en puntos (`.md` §2/§13) | ⬜ |
+| N11 | Token **Notion** (`NOTION_API_KEY`) + acceso del bot a la BD DEMO | Operador | Activa bitácora DEMO (`NotionLogger`, B8) | ⬜ |
 
 ---
 
@@ -29,12 +30,12 @@
 ### Stream A — Estrategia & Backtest  (dueño: `ApexNqIctStrategy.cs`, `/backtest`)
 | Tarea | Estado | Depende de |
 |-------|--------|-----------|
-| A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | 🚧 código existe, **NO compila** | — |
-| A2 **Fix compilación**: `EnterLong/Short` market sin overload `bool` (CS1501) | ⬜ | A1 |
+| A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
+| A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
 | A3 Compilar en NT8 (F5) limpio | ⬜ | A2 |
-| A4 ⚠️ Ventana entrada `.md` §3 = **9:30–14:00 ET** (código corta 11:00) | ⬜ | A3 |
-| A5 ⚠️ Cierre **TOTAL** 14:00 ET (`.md` §11 "cerrar todo"); código solo bloquea nuevas entradas | ⬜ | A3 |
-| A6 ⚠️ Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET | A3 |
+| A4 Ventana entrada `.md` §3 = **9:30–14:00 ET** | ✅ `KillZoneEnd=1400` (operador: "entra cuando quiera") | A3 |
+| A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
+| A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
 | A7 Backtest Strategy Analyzer (NQ, primaria 1m + 15m, 3–6 meses) | ⬜ | A3 |
 | A8 Tuning params `.md` §13 (N velas swing, gap mín FVG, ratio rechazo 1m) | ⬜ | A7 |
 | A9 2da operación opcional si la 1ra fue ganadora (`.md` §1/§11) | ⬜ fase 2 | A7 |
@@ -50,6 +51,7 @@
 | B5 Probar loop Claude→MCP→AddOn→NT8 (en Sim) | ⛔ | A3, B3, N6 |
 | B6 `get_today_trades` real | ⬜ | A/C |
 | B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | ⬜ | A3 |
+| B8 Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring) | ✅ PR #16; inerte sin `NOTION_API_KEY` (N11) | — |
 
 ### Stream C — Infra, Riesgo & Ops  (dueño: `/infra`, `/utils`, `/alerts`)
 | Tarea | Estado | Depende de |
@@ -67,14 +69,15 @@
 
 ## C. Gaps código ↔ `.md` (lo que falta para "que funcione según el .md")
 
-| # | Gap | Archivo | Severidad |
-|---|-----|---------|-----------|
-| G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | 🔴 bloquea todo |
-| G2 | Ventana entrada corta a 11:00 (**intencional** — operador: "después 10am Colombia no entro") | `ApexNqIctStrategy.cs` (`KillZoneEnd=1100`) | ✅ decisión operador |
-| G3 | ForcedExit solo bloquea entradas (**intencional** — operador: "dejar que termine, 1 oportunidad/día") | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
-| G4 | Liquidez = swings fractales → **corregido**: usa rango pre-apertura 1m hasta 9:30 ET | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto Stream B |
+| # | Gap | Archivo | Estado |
+|---|-----|---------|--------|
+| G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | ✅ PR #14 |
+| G2 | Ventana entrada 09:30–14:00 ET (`.md` §3; operador sesión 6: "el bot entra cuando quiera") | `ApexNqIctStrategy.cs` (`KillZoneEnd=1400`) | ✅ corregido (antes 1100) |
+| G3 | ForcedExit solo bloquea entradas; posición abierta corre a TP/SL (**intencional** — operador: "dejar que termine, 1 oportunidad/día"). NO cierra total pese a `.md` §11 | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
+| G4 | Liquidez = rango pre-apertura 1m hasta 9:30 ET (`.md` §4) | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto (impl. SECH) |
 
-> G1 es lo único que impide compilar. G2–G4 son alineación a la estrategia del `.md`.
+> G1–G4 resueltos / decididos. Falta F5 (A3) + backtest (A7).
+> ⚠️ G4 requiere datos **overnight** (template Globex/24h); sin RTH-only o `preMarketReady` no se arma → cero setups.
 
 ---
 
