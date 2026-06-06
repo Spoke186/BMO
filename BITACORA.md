@@ -117,6 +117,20 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - **MCP validado local:** `npm install` en `mcp/` + `node mcp/test-tools.mjs` → **6/6 OK** en PC de Esteban.
 - **N9 decidido:** repo sigue **PÚBLICO**.
 
+### 2026-06-05 — Sesión 2 (Claude Stream C en PC de ptala611-oss)
+
+- **C6 completo:** integrado `MarketCalendar.cs` en `ApexNqIctStrategy.cs`.
+  - Guard `ShouldSkipToday(Time[0])` añadido antes de `TryArmSetup()`: festivos CME 2026/2027 y
+    fines de semana no arman setups. Usa `Time[0]` (ya en ET en NT8) en lugar de `DateTime.UtcNow`
+    para que funcione en backtest histórico igual que en tiempo real.
+  - `BotForceCloseTime(Time[0])` reemplaza el hardcode `ForcedExit * 100`: en medias sesiones
+    el cierre forzado pasa a 12:45 ET (en lugar de 15:55). Se toma el `Math.Min` de ambos para
+    respetar también el parámetro del usuario si lo ajusta a algo más temprano.
+  - `ManageArmedSetup` no se toca: si hay orden viva en un festivo (borde raro), sigue
+    expirando/cancelando normalmente.
+- **TAREAS.md:** C6 marcado ✅.
+- **Branch:** `stream-c`. PR a `main` listo.
+
 ### 2026-06-05 — Sesión 1 (Claude Stream C en PC de ptala611-oss)
 
 - **Sync inicial:** pull desde `origin/main` (15 commits nuevos de streams A y B). Revisado estado completo.

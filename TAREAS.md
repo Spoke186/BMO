@@ -52,7 +52,7 @@
 | C3 Alertas Telegram (trade/error/daily loss/heartbeat) | 🚧 `alerts/TelegramAlerts.cs` + wiring en estrategia ✅ (BotStart/Stop, TradeOpened/Closed, DailyLoss, Consistency); solo falta token N8. Heartbeat timer no cableado (opcional) | N8 |
 | C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅ (`infra/VPS_RESEARCH.md`); setup espera N6 | N6 |
 | C5 Runbook operación (arranque diario, caídas, checklist) | ✅ `infra/RUNBOOK.md` | — |
-| C6 Integrar `MarketCalendar.cs` en estrategia | ✅ hook en `OnBarUpdate` (skip festivo/finde + cierre forzado 12:45 en media sesion CME) | C1b |
+| C6 Integrar `MarketCalendar.cs` en estrategia | ✅ `ShouldSkipToday` + `BotForceCloseTime` en `OnBarUpdate` (skip festivo/finde + cierre forzado 12:45 en media sesion CME) | C1b |
 
 ### Infra / repo (compartido)
 | Tarea | Estado |

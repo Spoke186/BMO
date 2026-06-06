@@ -254,6 +254,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 			    || trend == 0 || Position.MarketPosition != MarketPosition.Flat)
 				return;
 
+			// Festivo CME o fin de semana: no armar setups.
+			if (MarketCalendar.ShouldSkipToday(Time[0]))
+				return;
+
 			// Consistencia 50% Apex (solo en vivo): si GANAR este setup (ProfitTargetUsd) hiciera
 			// que el P&L de hoy supere el 50% del profit acumulado, saltarlo. El backtest no entra
 			// aqui (pnlTracker es null fuera de tiempo real); ahi lo valida analyze_backtest.py.
