@@ -146,6 +146,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en el entorno (N8 pendiente): wiring inerte
 		// hasta que el operador ponga el token. Solo se instancia en vivo, igual que pnlTracker.
 		private TelegramAlerts alerts;
+
+		// Bitácora DEMO Notion (infra/NotionLogger.cs). Requiere NOTION_API_KEY en entorno.
+		// Registra apertura al abrir trade y actualiza el cierre al cerrar.
+		private NotionLogger notion;
+		private System.Threading.Tasks.Task<string> notionPageTask;
+		private string  notionCurrentPageId;
+		private double  lastEntryPrice;
+		private int     lastEntryDir;
 		#endregion
 
 		protected override void OnStateChange()
@@ -200,6 +208,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				alerts = new TelegramAlerts();
 				alerts.SendAsync(TelegramAlerts.Msg.BotStart, Instrument.FullName);
+
+				notion = new NotionLogger();
 			}
 			else if (State == State.Terminated)
 			{
@@ -578,6 +588,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 				double tradePnl = SystemPerformance.AllTrades[i].ProfitCurrency;
 				pnlTracker.RecordTrade(tradePnl);
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+
+				// Resolver el pageId de Notion (la apertura puede haber tardado unos ms)
+				if (notionPageTask != null)
+				{
+					if (notionPageTask.IsCompleted)
+						notionCurrentPageId = notionPageTask.Result;
+					notionPageTask = null;
+				}
+				if (notion != null && !string.IsNullOrEmpty(notionCurrentPageId))
+				{
+					double tol    = 50;
+					string notas  = tradePnl >=  ProfitTargetUsd - tol ? "Target alcanzado"
+					              : tradePnl <= -StopLossUsd     + tol ? "Stop alcanzado"
+					              :                                       "Cierre por horario o parcial";
+					notion.ActualizarCierreAsync(notionCurrentPageId, tradePnl, notas);
+					notionCurrentPageId = null;
+				}
 			}
 			lastTradeCount = total;
 		}
@@ -628,10 +655,37 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if ((execution.Order.Name == "LongFVG" || execution.Order.Name == "ShortFVG")
 			    && execution.Order.OrderState == OrderState.Filled)
 			{
-				tradedToday = true;
-				setupState  = 0;
+				tradedToday    = true;
+				setupState     = 0;
+				lastEntryPrice = price;
+				lastEntryDir   = execution.Order.Name == "LongFVG" ? 1 : -1;
+
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
-					$"{(execution.Order.Name == "LongFVG" ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
+					$"{(lastEntryDir == 1 ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
+
+				if (notion != null)
+				{
+					double ptVal   = Instrument.MasterInstrument.PointValue;
+					double stopPts = StopLossUsd    / (ptVal * Contratos);
+					double tpPts   = ProfitTargetUsd / (ptVal * Contratos);
+					double stopPx  = lastEntryDir == 1 ? price - stopPts : price + stopPts;
+					double tpPx    = lastEntryDir == 1 ? price + tpPts   : price - tpPts;
+
+					// Hora Colombia: UTC-5 (siempre, sin DST)
+					var colZone    = TimeZoneInfo.FindSystemTimeZoneById("SA Pacific Standard Time");
+					var colTime    = TimeZoneInfo.ConvertTime(DateTime.Now, colZone);
+					string horaCol = colTime.ToString("HH:mm");
+
+					notionPageTask = notion.RegistrarAperturaAsync(
+						esFondeo:    false,
+						activo:      Instrument.FullName,
+						dir:         lastEntryDir,
+						entryPrice:  price,
+						stopPrice:   stopPx,
+						targetPrice: tpPx,
+						horaCol:     horaCol,
+						fecha:       DateTime.Now.Date);
+				}
 			}
 		}
 		#endregion
