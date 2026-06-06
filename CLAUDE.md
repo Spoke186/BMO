@@ -14,14 +14,16 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 - Descartado: Python+API y TradingView+PickMyTrade.
 
 ## Estrategia (decidida)
-ICT continuación de tendencia:
+ICT continuación de tendencia — **temporalidades: 15m sesgo/FVG, 1m gatillo**:
 1. **Tendencia** = estructura HH/HL en **15m** (pivote fractal, fuerza 3).
-2. **Sweep** de liquidez contra-tendencia en **5m** (perfora último swing y recupera).
-3. **Desplazamiento** = vela cuerpo ≥ 1.5×ATR(14) (proxy de "institucional").
-4. **FVG** de 3 velas (gap mínimo 3 pts).
-5. **Entrada** = límite en **fill completo** del FVG (borde lejano), a favor de tendencia.
-6. **Stop** detrás del extremo del sweep + 2 ticks. **TP = 1:3 RR** fijo.
-7. **Ventana** NY kill zone 8:30–11:00 ET, cierre forzado 15:55 ET, **1 setup/día**.
+2. **Sweep** de liquidez contra-tendencia en **15m** (perfora último swing del rango pre-apertura y el cierre recupera).
+3. **CHoCH + Desplazamiento** en **15m**: tras la barrida, vela cierra más allá del último swing en dirección tendencia Y cuerpo ≥ 1.5×ATR(14). Confirma reversión institucional.
+4. **FVG** de 3 velas en **15m** (gap mínimo 6 pts, en el impulso del CHoCH).
+5. **Retroceso al FVG** en **1m**: esperar que el precio entre a la zona del gap.
+6. **Confirmación en 1m** (al menos una): vela de rechazo (mecha/cuerpo ≥ 1.5) O mini-CHoCH en 1m dentro del FVG.
+7. **Entrada** = mercado al cierre de la vela de confirmación 1m, a favor de tendencia.
+8. **Stop $250 fijo / TP $700 fijo** (1:3 RR). 2 contratos fijos siempre.
+9. **Ventana** NY 9:30–14:00 ET (08:30–13:00 Colombia), cierre forzado 14:00 ET, **1 setup/día**.
 
 ## Riesgo Apex en el código
 - ✅ Stop obligatorio, no DCA, 1 entrada/setup, ventana horaria, max daily loss ($400).
@@ -32,7 +34,7 @@ ICT continuación de tendencia:
 
 ## Convenciones
 - Parámetros TODO por Inputs (`[NinjaScriptProperty]`), nada hardcodeado.
-- `Calculate.OnBarClose`. Serie primaria 5m; 15m añadida por `AddDataSeries`.
+- `Calculate.OnBarClose`. Serie primaria **1m** (gatillo); **15m** añadida por `AddDataSeries` (sesgo/FVG).
 - Comentar el *por qué* (proxies, reglas Apex), no el *qué*.
 - Nunca primer run en cuenta fondeada. Backtest → Sim → Eval → Fondeada.
 
