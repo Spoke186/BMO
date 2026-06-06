@@ -46,11 +46,13 @@
 ### Stream C — Infra, Riesgo & Ops  (dueño: `/infra`, `/utils`, `/alerts`)
 | Tarea | Estado | Depende de |
 |-------|--------|-----------|
-| C1 `market_calendar` (festivos/medias sesiones CME) | ✅ | — |
-| C2 Módulo consistencia 50% (lógica + persistencia) | ✅ | — (lo integra A5) |
-| C3 Alertas Telegram (trade/error/daily loss/heartbeat) | ⛔ | N8 |
-| C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅ (`infra/VPS_RESEARCH.md`) · setup espera N6 | N6 |
-| C5 Runbook operación (arranque diario, caídas, checklist) | ✅ | — |
+| C1 `market_calendar` TS para MCP | ✅ `infra/marketCalendar.ts` | — |
+| C1b `MarketCalendar.cs` para NinjaScript (estrategia) | ✅ `infra/MarketCalendar.cs` | — |
+| C2 Módulo consistencia 50% (lógica + persistencia) | ✅ `infra/DailyPnlTracker.cs` (integrado A5) | — |
+| C3 Alertas Telegram (trade/error/daily loss/heartbeat) | 🚧 `alerts/TelegramAlerts.cs` listo; activa al pasar N8 | N8 |
+| C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅ (`infra/VPS_RESEARCH.md`); setup espera N6 | N6 |
+| C5 Runbook operación (arranque diario, caídas, checklist) | ✅ `infra/RUNBOOK.md` | — |
+| C6 Integrar `MarketCalendar.cs` en estrategia | ⬜ Pendiente Stream A — hook en OnBarUpdate antes de TryArmSetup | C1b |
 
 ### Infra / repo (compartido)
 | Tarea | Estado |
