@@ -68,6 +68,22 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 10 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: mergear PR #19 (B6+B7) con fix de compilación + corregir instrumento del backtest.**
+
+- **PR #19 mergeado a `main`** (autorizado por el operador): estado ICT en tiempo real
+  (`PublishState` = espejo **read-only**, no toca lógica) + `GET /setup` + `/trades/today` real
+  (`TodayTrades`/`TradeSummary`) + tool MCP `get_setup_state` (v0.3.0, **7 tools**) + test #7. Yo
+  añadí el `using System.Collections.Generic;` que faltaba en el AddOn (**CS0246**) sobre la rama de
+  Sergio. **Falta F5 en NT8 para confirmar compile** (mock MCP no corrió: puerto 8731 ocupado por el
+  AddOn ya en ejecución). B6/B7 → ✅.
+- **⚠️ Instrumento del backtest corregido:** el operador había puesto **ZW** (trigo Chicago) — mercado
+  equivocado — y antes daba 0 trades por sesión RTH. Rumbo correcto: **NQ contrato continuo
+  `NQ ##-##`**, 1m, sesión **Globex/24h**. NO MNQ (bracket USD dimensionado a NQ), NO índice cash.
+- Docs: TAREAS (B6/B7 ✅ + nota PR #19), README (MCP 7 tools, `/trades/today` real, get_setup_state).
+- **Sin cambios de lógica de la estrategia.**
+
 ### 2026-06-06 — Sesión 9 (Claude Stream A en PC de Esteban / Spoke186)
 
 **Tema: A3 — primer compile limpio en NT8.**

@@ -49,8 +49,8 @@
 | B3 Rellenar `AccountName`/`InstrumentName`/`Token`→env | 🚧 env listo (Sim101/NQ); valores Apex esperan N4 | N4 |
 | B4 `npm install`+`build`+registrar en `.mcp.json` | ✅ | — |
 | B5 Probar loop Claude→MCP→AddOn→NT8 (en Sim) | ⛔ | A3, B3, N6 |
-| B6 `get_today_trades` real | 🚧 **PR #19** (`/trades/today` real + `TodayTrades`); no mergeado: falta `using` (no compila) | A/C |
-| B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | 🚧 **PR #19** (`PublishState`+`/setup`+tool `get_setup_state` v0.3.0); no mergeado: falta `using` | A3 |
+| B6 `get_today_trades` real | ✅ **PR #19 mergeado** (`/trades/today` real + `TodayTrades`); fix `using` aplicado | A/C |
+| B7 Exponer estado del setup (sweep/CHoCH/FVG/armado) al MCP para monitoreo | ✅ **PR #19 mergeado** (`PublishState`+`/setup`+tool `get_setup_state`, MCP v0.3.0) | A3 |
 | B8 Bitácora DEMO Notion (`infra/NotionLogger.cs` + wiring) | ✅ PR #16; inerte sin `NOTION_API_KEY` (N11) | — |
 
 > **Handoff Sergio (sesión 7):** `main` limpio, contrato A↔B vivo (`ApexBridgeState.TradingEnabled`,
@@ -58,10 +58,10 @@
 > real de `/trades/today`) y B7 (tool de monitoreo del setup). ⚠️ Si el Sim corre **MNQ**, exportar
 > `APEX_INSTRUMENT=MNQ` o `/position` del AddOn filtra mal (`StartsWith("NQ")`, línea 196).
 
-> **PR #19 (Sergio, B6+B7) — sesión 8:** revisado, **alinea** (`PublishState` es espejo read-only,
-> no toca lógica de trading). 🔴 **NO mergear: no compila** — falta `using System.Collections.Generic;`
-> en `ntaddon/ApexBridgeAddOn.cs` (usa `List<TradeSummary>`, líneas 69/245/247 → **CS0246**).
-> **Sergio:** añade ese using, F5 en su NT8 para verificar (A3 ya es compartida) y mergea.
+> **PR #19 (B6+B7) — mergeado sesión 10:** ✅ en `main`. Estado ICT (`PublishState` read-only) +
+> `/setup` + `/trades/today` real + tool MCP `get_setup_state` (v0.3.0, 7 tools). El operador autorizó
+> añadir el `using System.Collections.Generic;` faltante (CS0246) sobre la rama de Sergio. ⚠️ **Falta
+> F5 en NT8 para confirmar compile** (mock MCP no se pudo correr: puerto 8731 ocupado por el AddOn).
 
 ### Stream C — Infra, Riesgo & Ops  (dueño: `/infra`, `/utils`, `/alerts`)
 | Tarea | Estado | Depende de |
