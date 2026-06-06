@@ -489,9 +489,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
 
 			if (setupDir == 1)
-				EnterLong(0, Contratos, sig);
+				EnterLong(0, true, Contratos, sig);
 			else
-				EnterShort(0, Contratos, sig);
+				EnterShort(0, true, Contratos, sig);
 
 			setupState = 0;
 		}
