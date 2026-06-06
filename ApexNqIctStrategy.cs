@@ -197,7 +197,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				StopBufferTicks      = 2;
 				EnableSetupB         = true;
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia)
-				KillZoneEnd          = 1100;  // 11:00 ET = Colombia 10:00 (EDT). En EST (invierno): 1000.
+				KillZoneEnd          = 1400;  // 14:00 ET (13:00 Col): ventana del .md canonico de Sergio. Revierte el 1100 de sesion 11.
 				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas; posicion abierta corre a TP/SL
 				                             // (operador G3: "dejar que termine, 1 oportunidad/dia")
 				StartingBalance      = 50000;

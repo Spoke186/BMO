@@ -74,6 +74,43 @@ def test_out_of_sample_split():
     assert oos["is"]["trades"] == 7 and oos["oos"]["trades"] == 3
 
 
+def test_classify_setup():
+    assert a.classify_setup("LongFVG") == "A"
+    assert a.classify_setup("ShortFVG") == "A"
+    assert a.classify_setup("LongSweep") == "B"
+    assert a.classify_setup("ShortSweep") == "B"
+    assert a.classify_setup("") is None
+    assert a.classify_setup(None) is None
+    assert a.classify_setup("randomname") is None
+
+
+def test_split_by_setup():
+    trades = [
+        {"profit": 700, "setup": "A"},
+        {"profit": -250, "setup": "B"},
+        {"profit": 700, "setup": "A"},
+        {"profit": 100, "setup": None},
+    ]
+    g = a.split_by_setup(trades)
+    assert len(g["A"]) == 2 and len(g["B"]) == 1 and len(g["?"]) == 1
+
+
+def test_setup_breakdown():
+    trades = [
+        {"profit": 700, "setup": "A"},
+        {"profit": -250, "setup": "A"},
+        {"profit": 700, "setup": "B"},
+    ]
+    rows = a.setup_breakdown(trades)
+    labels = [lbl for lbl, _ in rows]
+    assert "Setup A (FVG)" in labels and "Setup B (Sweep)" in labels
+    assert labels[-1] == "Combinado (A+B)"
+    combined = rows[-1][1]
+    assert combined["trades"] == 3
+    setup_a = next(s for lbl, s in rows if lbl == "Setup A (FVG)")
+    assert setup_a["trades"] == 2 and setup_a["wins"] == 1
+
+
 def _run_all():
     fns = [v for k, v in globals().items()
            if k.startswith("test_") and callable(v)]
