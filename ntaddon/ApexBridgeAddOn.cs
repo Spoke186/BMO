@@ -32,6 +32,17 @@ using NinjaTrader.NinjaScript;
 //    Account contra tu version exacta de NT8.
 namespace NinjaTrader.NinjaScript.AddOns
 {
+	// Resumen de un trade cerrado (escrito por la estrategia, leido por el AddOn).
+	public class TradeSummary
+	{
+		public string Direction; // "LONG" / "SHORT"
+		public double EntryPrice;
+		public double ExitPrice;
+		public double PnlUsd;
+		public string ExitTime;  // "HH:mm:ss ET"
+		public string Result;    // "WIN" / "LOSS"
+	}
+
 	// Estado compartido entre AddOn y Estrategia (misma assembly Custom).
 	public static class ApexBridgeState
 	{
@@ -53,6 +64,10 @@ namespace NinjaTrader.NinjaScript.AddOns
 		public static bool   PriceInFvg      = false;
 		public static bool   TradedToday     = false;
 		public static bool   TradingDisabled = false;
+
+		// Trades cerrados hoy (vaciado en ResetForNewSession; lock para acceso cross-thread).
+		public static readonly List<TradeSummary> TodayTrades = new List<TradeSummary>();
+		public static readonly object TodayTradesLock = new object();
 	}
 
 	public class ApexBridgeAddOn : AddOnBase
@@ -161,8 +176,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 			}
 			else if (method == "GET" && path == "/trades/today")
 			{
-				// TODO(Stream A/C): exponer trades reales del dia desde la estrategia.
-				Write(ctx, 200, "{\"trades\":[],\"note\":\"placeholder\"}");
+				Write(ctx, 200, TodayTradesJson());
 			}
 			else if (method == "POST" && path == "/strategy/enable")
 			{
@@ -223,6 +237,35 @@ namespace NinjaTrader.NinjaScript.AddOns
 				+ $"\"market_position\":\"{pos.MarketPosition}\","
 				+ $"\"quantity\":{pos.Quantity},"
 				+ $"\"avg_price\":{Num(pos.AveragePrice)}"
+				+ "}";
+		}
+
+		private string TodayTradesJson()
+		{
+			List<TradeSummary> snapshot;
+			lock (ApexBridgeState.TodayTradesLock)
+				snapshot = new List<TradeSummary>(ApexBridgeState.TodayTrades);
+
+			double totalPnl = 0;
+			var items = new System.Text.StringBuilder();
+			foreach (var t in snapshot)
+			{
+				if (items.Length > 0) items.Append(",");
+				items.Append("{"
+					+ $"\"direction\":\"{t.Direction}\","
+					+ $"\"entry\":{Num(t.EntryPrice)},"
+					+ $"\"exit\":{Num(t.ExitPrice)},"
+					+ $"\"pnl\":{Num(t.PnlUsd)},"
+					+ $"\"exit_time\":\"{Escape(t.ExitTime)}\","
+					+ $"\"result\":\"{t.Result}\""
+					+ "}");
+				totalPnl += t.PnlUsd;
+			}
+
+			return "{"
+				+ $"\"count\":{snapshot.Count},"
+				+ $"\"total_pnl\":{Num(totalPnl)},"
+				+ $"\"trades\":[{items}]"
 				+ "}";
 		}
 

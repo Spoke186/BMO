@@ -32,7 +32,11 @@ function startMock() {
       else if (method === 'GET'  && url === '/position')
         res.end(JSON.stringify({ instrument: 'NQ 09-26', market_position: 'FLAT', quantity: 0 }));
       else if (method === 'GET'  && url === '/trades/today')
-        res.end(JSON.stringify({ trades: [], note: 'placeholder' }));
+        res.end(JSON.stringify({
+          count: 1, total_pnl: 700,
+          trades: [{ direction: 'LONG', entry: 21440.00, exit: 21457.50,
+                     pnl: 700, exit_time: '10:23:45', result: 'WIN' }],
+        }));
       else if (method === 'POST' && url === '/strategy/enable')
         res.end('{"trading_enabled":true}');
       else if (method === 'POST' && url === '/strategy/disable')
@@ -93,7 +97,7 @@ function notify(method, params = {}) {
 const TESTS = [
   { id: 1, name: 'get_account',      args: {},                    expect: 'cash_value'      },
   { id: 2, name: 'get_position',     args: {},                    expect: 'market_position' },
-  { id: 3, name: 'get_today_trades', args: {},                    expect: 'trades'          },
+  { id: 3, name: 'get_today_trades', args: {},                    expect: 'total_pnl'       },
   { id: 4, name: 'enable_strategy',  args: {},                    expect: 'trading_enabled' },
   { id: 5, name: 'disable_strategy', args: {},                    expect: 'trading_enabled' },
   { id: 6, name: 'check_market',     args: { date: '2026-06-05'}, expect: 'trading_day'     },

@@ -596,6 +596,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			preMarketReady     = false;
 			preMarketAttempted = false;
 			sessionStartCumPnl = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
+			lock (ApexBridgeState.TodayTradesLock)
+				ApexBridgeState.TodayTrades.Clear();
 		}
 
 		private void UpdateRiskGuards()
@@ -646,9 +648,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 			int total = SystemPerformance.AllTrades.Count;
 			for (int i = lastTradeCount; i < total; i++)
 			{
-				double tradePnl = SystemPerformance.AllTrades[i].ProfitCurrency;
+				var    t        = SystemPerformance.AllTrades[i];
+				double tradePnl = t.ProfitCurrency;
 				pnlTracker.RecordTrade(tradePnl);
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+
+				// Publicar trade al AddOn (B6) — accesible via GET /trades/today
+				lock (ApexBridgeState.TodayTradesLock)
+					ApexBridgeState.TodayTrades.Add(new TradeSummary
+					{
+						Direction  = t.Entry.MarketPosition == MarketPosition.Long ? "LONG" : "SHORT",
+						EntryPrice = t.Entry.Price,
+						ExitPrice  = t.Exit.Price,
+						PnlUsd     = tradePnl,
+						ExitTime   = t.Exit.Time.ToString("HH:mm:ss"),
+						Result     = tradePnl > 0 ? "WIN" : "LOSS",
+					});
 
 				// Resolver el pageId de Notion (la apertura puede haber tardado unos ms)
 				if (notionPageTask != null)
