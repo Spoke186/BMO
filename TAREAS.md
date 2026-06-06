@@ -49,7 +49,7 @@
 | C1 `market_calendar` (festivos/medias sesiones CME) | ✅ | — |
 | C2 Módulo consistencia 50% (lógica + persistencia) | ✅ | — (lo integra A5) |
 | C3 Alertas Telegram (trade/error/daily loss/heartbeat) | ⛔ | N8 |
-| C4 VPS opcional (Windows, baja latencia CME) | ⬜ | N6 |
+| C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅ (`infra/VPS_RESEARCH.md`) · setup espera N6 | N6 |
 | C5 Runbook operación (arranque diario, caídas, checklist) | ✅ | — |
 
 ### Infra / repo (compartido)
