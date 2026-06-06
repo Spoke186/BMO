@@ -33,7 +33,7 @@
 | A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
 | A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
 | A3 Compilar en NT8 (F5) limpio | ✅ **confirmado** (Esteban, sesión 9: aparece en Strategy Analyzer = compiló limpio) | A2 |
-| A4 Ventana entrada | ✅ **revisado sesión 11: `KillZoneEnd=1100`** (09:30–11:00 ET, kill zone NY). Operador volvió a 11:00 (sesión 6 fue 1400) | A3 |
+| A4 Ventana entrada | ✅ **`KillZoneEnd=1130`** (09:30–11:30 ET) — PR #28 de Sergio (más frecuencia); supersede el 1100 de sesión 11. Input → operador fija 1100 en runtime si quiere | A3 |
 | A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
 | A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
 | A7 Backtest Strategy Analyzer (NQ `NQ ##-##` 1m + 15m, 3–6 meses, Globex/24h) | 🚧 corre OK (sesión 10: rango pre-ap arma con ETH). Setup A daba ~0 trades (rango overnight muy ancho); Setup B (A11) genera más. Falta exportar + `analyze_backtest.py` | A3 |
@@ -42,7 +42,7 @@
 | A10 Consistencia 50% integrada (`DailyPnlTracker`) | ✅ falta validar en Sim | C2 |
 | A11 **Setup B** (Opening Range Sweep: barrida 1m del rango pre-mercado → entrada directa SIN CHoCH/FVG ni filtro tendencia, flag `EnableSetupB` default ON) | ✅ PR #24 (Sergio) | A3 |
 | A12 Exponer estado de **Setup B** en `PublishState`/`/setup` (hoy solo muestra Setup A) | ⬜ **Sergio** | A11, B7 |
-| A13 Backtest comparativo **Setup A vs B** (win rate, PF, # trades) → decidir cuál(es) dejar | ⬜ | A7 |
+| A13 Backtest comparativo **Setup A vs B** (win rate, PF, # trades) → decidir cuál(es) dejar | ✅ **herramienta mergeada** (PR #26): `analyze_backtest.py` separa por `Entry name` (FVG=A, Sweep=B → desglose A/B/combinado). Nota: #28 añadió Setup C (Order Block); el split solo etiqueta A/B hoy. Falta el export real | A7 |
 
 ### Stream B — MCP & Bridge  (dueño: `/mcp`, `/ntaddon`)
 | Tarea | Estado | Depende de |
@@ -87,7 +87,7 @@
 | # | Gap | Archivo | Estado |
 |---|-----|---------|--------|
 | G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | ✅ PR #14 |
-| G2 | Ventana entrada — **revisado sesión 11 a 09:30–11:00 ET** (`KillZoneEnd=1100`). Operador volvió a 11:00 (sesión 6 fue 1400). `.md` §3 dice hasta 14:00 → gana la decisión del operador | `ApexNqIctStrategy.cs` (`KillZoneEnd=1100`) | ✅ decisión operador |
+| G2 | Ventana entrada — **`KillZoneEnd=1130`** (09:30–11:30 ET, PR #28 de Sergio; supersede 1100 de sesión 11). `.md` §3 dice hasta 14:00 → gana la decisión del operador/Sergio | `ApexNqIctStrategy.cs` (`KillZoneEnd=1130`) | ✅ decisión operador |
 | G3 | ForcedExit solo bloquea entradas; posición abierta corre a TP/SL (**intencional** — operador: "dejar que termine, 1 oportunidad/día"). NO cierra total pese a `.md` §11 | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
 | G4 | Liquidez = rango pre-apertura 1m hasta 9:30 ET (`.md` §4) | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto (impl. SECH) |
 
@@ -113,8 +113,15 @@ N6 (PC-LIVE) ─► B5, C4
 
 ---
 
-## E. Acción inmediata (sesión 11)
-- **Esteban (Stream A):** A7 — backtest NQ `NQ ##-##` 1m, Globex/24h, con Setup B activo → exportar trades → `analyze_backtest.py`. Luego A13 (comparar Setup A vs B) y A8 (tuning).
+## E. Acción inmediata (sesión 12)
+- **Esteban (Stream A):** correr A7. **F5 primero** (sesión 12 metió el Input `SessionTemplateName`
+  default `CME US Index Futures ETH` → la serie 15m ya trae datos overnight desde el código; no hay que
+  cambiar la plantilla a mano). Instrumento **NQ** (`NQ ##-##` o front month), serie primaria **1m**,
+  `EnableSetupB=ON`, `KillZoneEnd=1100`. Auto-chequeo `[PRE-AP]` en NinjaScript Output (debe decir
+  `Range 1m` o `Range 15m fallback`, NO `SIN datos overnight`). Pestaña **Trades → Export CSV** →
+  `python analyze_backtest.py <csv>`: el desglose A vs B (A13) sale solo. Luego A8 (tuning).
+- **A13 herramienta lista** (sesión 12): `analyze_backtest.py` etiqueta por `Entry name` y compara
+  A/B/combinado. Solo falta la data de A7.
 - **Sergio (Stream B + estrategia):** B9 — activar bitácora Notion (token N11, acceso BD, validar en Sim). A12 — exponer Setup B en `/setup`.
 - **Alan (Stream C):** C8 — bot Telegram con **señales** de entrada en vivo (dir/precio/setup/stop/target) + formato + activación (token N8).
 - **Operador:** N1 (Apex), N6 (PC-LIVE), N8 (token Telegram), N10 (valor punto), N11 (token Notion).

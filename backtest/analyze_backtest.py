@@ -77,6 +77,22 @@ def parse_dt(raw: str):
     return None
 
 
+def classify_setup(name):
+    """Nombre de senal de entrada -> 'A' (FVG) | 'B' (Sweep) | None.
+
+    Los nombres los pone la estrategia en EnterLong/Short: Setup A = LongFVG/
+    ShortFVG, Setup B = LongSweep/ShortSweep. Sirve para el desglose A13.
+    """
+    if not name:
+        return None
+    n = str(name).lower()
+    if "fvg" in n:
+        return "A"
+    if "sweep" in n:
+        return "B"
+    return None
+
+
 def _match_col(headers, *, want, avoid=()):
     """Fuzzy match de columna por substring (case-insensitive)."""
     low = [(h, h.lower()) for h in headers]
@@ -91,10 +107,12 @@ def _match_col(headers, *, want, avoid=()):
     return None
 
 
-def load_trades(path, profit_col=None, exit_col=None, entry_col=None):
+def load_trades(path, profit_col=None, exit_col=None, entry_col=None,
+                name_col=None):
     """Lee el CSV de trades de NT8. Devuelve lista ordenada por exit_time.
 
-    Cada trade: {'profit': float, 'exit': datetime|None, 'entry': datetime|None}.
+    Cada trade: {'profit', 'exit', 'entry', 'setup'} donde setup = 'A'|'B'|None
+    segun el nombre de la senal de entrada (columna "Entry name" del export).
     """
     with open(path, "r", encoding="utf-8-sig", newline="") as f:
         sample = f.read(4096)
@@ -113,6 +131,8 @@ def load_trades(path, profit_col=None, exit_col=None, entry_col=None):
             or _match_col(headers, want="exit")
         ecol = entry_col or _match_col(headers, want="entry time") \
             or _match_col(headers, want="entry")
+        ncol = name_col or _match_col(headers, want="entry name") \
+            or _match_col(headers, want="name", avoid=("exit",))
         if not pcol:
             raise SystemExit(
                 f"ERROR: no encuentro columna de profit. Encabezados: {headers}\n"
@@ -129,6 +149,7 @@ def load_trades(path, profit_col=None, exit_col=None, entry_col=None):
                 "profit": profit,
                 "exit": parse_dt(row.get(xcol, "")) if xcol else None,
                 "entry": parse_dt(row.get(ecol, "")) if ecol else None,
+                "setup": classify_setup(row.get(ncol, "")) if ncol else None,
             })
 
     if not trades:
@@ -140,7 +161,7 @@ def load_trades(path, profit_col=None, exit_col=None, entry_col=None):
         print("AVISO: no pude parsear todas las fechas de salida; mantengo el "
               "orden del archivo. Agrupacion diaria/consistencia puede degradar.",
               file=sys.stderr)
-    return trades, {"profit": pcol, "exit": xcol, "entry": ecol}
+    return trades, {"profit": pcol, "exit": xcol, "entry": ecol, "name": ncol}
 
 
 # --------------------------------------------------------------------------- #
@@ -317,6 +338,35 @@ def monte_carlo(profits, runs, starting_balance, trailing_dd, seed=42):
 
 
 # --------------------------------------------------------------------------- #
+# A13 - Desglose por setup (A=FVG vs B=Sweep)
+# --------------------------------------------------------------------------- #
+_SETUP_LABELS = {"A": "Setup A (FVG)", "B": "Setup B (Sweep)",
+                 "?": "Sin etiquetar"}
+
+
+def split_by_setup(trades):
+    """Agrupa trades por setup de entrada. Devuelve dict 'A'/'B'/'?' -> lista."""
+    groups = {"A": [], "B": [], "?": []}
+    for t in trades:
+        groups.setdefault(t.get("setup") or "?", []).append(t)
+    return groups
+
+
+def setup_breakdown(trades):
+    """A13: stats por setup. Lista de (label, basic_stats) para A, B,
+    sin-etiquetar (si hay) y combinado. Solo incluye grupos no vacios."""
+    groups = split_by_setup(trades)
+    rows = []
+    for key in ("A", "B", "?"):
+        g = groups.get(key) or []
+        if g:
+            rows.append((_SETUP_LABELS[key],
+                         basic_stats([t["profit"] for t in g])))
+    rows.append(("Combinado (A+B)", basic_stats([t["profit"] for t in trades])))
+    return rows
+
+
+# --------------------------------------------------------------------------- #
 # Reporte
 # --------------------------------------------------------------------------- #
 def _m(v):
@@ -404,6 +454,18 @@ def report(trades, cols, args):
         L.append(_flag(mc["prob_blowup"] < 0.05,
                        f"Prob. tocar trailing DD ({_m(mc['trailing_dd'])}): "
                        f"{mc['prob_blowup']*100:.1f}%"))
+
+    sb = setup_breakdown(trades)
+    if any(lbl.startswith("Setup") for lbl, _ in sb):
+        L.append("")
+        L.append("-- Desglose por setup (A13: A=FVG vs B=Sweep) -----------------")
+        L.append(f"  {'Grupo':<17}{'Trades':>7}{'WR':>6}{'PF':>7}"
+                 f"{'Net':>12}{'Exp/trade':>12}")
+        for lbl, s in sb:
+            L.append(f"  {lbl:<17}{s['trades']:>7}{s['win_rate']*100:>5.0f}%"
+                     f"{_pf(s['profit_factor']):>7}{_m(s['net_profit']):>12}"
+                     f"{_m(s['expectancy']):>12}")
+        L.append("  (mas trades + PF>1 + expectancy>0 = setup que conviene dejar)")
     L.append("=" * 64)
     return "\n".join(L)
 
@@ -433,7 +495,9 @@ def demo_trades(seed=7):
         win = rng.random() < 0.38
         profit = rng.gauss(700, 40) if win else -rng.gauss(250, 15)
         ts = base + timedelta(days=i)
-        trades.append({"profit": round(profit, 2), "exit": ts, "entry": ts})
+        setup = "A" if rng.random() < 0.5 else "B"
+        trades.append({"profit": round(profit, 2), "exit": ts, "entry": ts,
+                       "setup": setup})
     return trades
 
 
@@ -445,6 +509,9 @@ def build_parser():
     p.add_argument("--profit-col", help="nombre EXACTO de la columna de profit.")
     p.add_argument("--exit-col", help="nombre EXACTO de la columna de exit time.")
     p.add_argument("--entry-col", help="nombre EXACTO de la columna de entry time.")
+    p.add_argument("--name-col",
+                   help="nombre EXACTO de la columna del nombre de entrada "
+                        "(para el desglose A vs B). Def: autodetecta 'Entry name'.")
     p.add_argument("--starting-balance", type=float, default=50000)
     p.add_argument("--trailing-dd", type=float, default=2500)
     p.add_argument("--daily-loss", type=float, default=400)
@@ -463,7 +530,7 @@ def main(argv=None):
         print("[DEMO] trades sinteticos (no es un backtest real).\n")
     elif args.csv:
         trades, cols = load_trades(args.csv, args.profit_col, args.exit_col,
-                                   args.entry_col)
+                                   args.entry_col, args.name_col)
     else:
         build_parser().print_help()
         return 1

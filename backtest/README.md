@@ -24,8 +24,18 @@ trailing DD y consistencia en su servidor con high-water intradía. Esto es para
 3. Click derecho en la grilla → **Export** → CSV (o Excel y "Guardar como CSV").
 4. Guarda el archivo, ej `trades_nq_q1.csv`.
 
-El script auto-detecta las columnas `Profit` y `Exit time`. Si tu versión de NT8
-usa otros nombres, pásalos explícitos con `--profit-col` / `--exit-col`.
+El script auto-detecta las columnas `Profit`, `Exit time` y `Entry name`. Si tu
+versión de NT8 usa otros nombres, pásalos con `--profit-col` / `--exit-col` /
+`--name-col`.
+
+### A13 — comparación Setup A vs B
+El export incluye el **nombre de la señal de entrada** (`Entry name`): la estrategia
+arma `LongFVG`/`ShortFVG` (Setup A) y `LongSweep`/`ShortSweep` (Setup B). El script
+separa los trades por ese nombre y, si los detecta, imprime un **desglose por setup**
+(trades, win rate, PF, net, expectancy de A, B y combinado) al final del reporte.
+Así A13 sale de **un solo backtest con `EnableSetupB=ON`** (no hace falta correr dos
+veces): ambos setups disparan, se etiquetan por nombre y se comparan. Criterio para
+"cuál(es) dejar": más trades + PF > 1 + expectancy > 0.
 
 ## Uso
 ```bash
