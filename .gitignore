@@ -12,6 +12,8 @@ obj/
 # Node (MCP server)
 node_modules/
 dist/
+!mcp/dist/
+!mcp/dist/index.js
 *.log
 
 # Python (si MCP en Python)

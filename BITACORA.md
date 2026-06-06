@@ -58,6 +58,18 @@ NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop
 
 ## 3. Cronología
 
+### 2026-06-05 — Sesión 2 (Claude Stream B/C en PC de Sergio)
+
+- **B4 completo:** `npm install` + `npm run build` en `mcp/` → build limpio (0 errores TS).
+- Creado `.mcp.json` (raíz del repo) → registra `apex-nt8-mcp` con node + args + env vars.
+- Creado `.env.example` → plantilla de `BRIDGE_URL` / `BRIDGE_TOKEN`.
+- `.gitignore` actualizado → `mcp/dist/index.js` ahora se commitea (MCP usable sin build local).
+- **C1 completo:** `infra/marketCalendar.ts` → módulo TypeScript festivos CME 2026/2027 + medias sesiones + `getMarketStatus()`. Usado en MCP.
+- **MCP v0.2.0:** añadida tool `check_market` (6 tools total). Inlínea la lógica CME. Build limpio.
+- **C2 completo:** `infra/DailyPnlTracker.cs` → clase C# lista para Stream A. Persiste P&L diario en `Documents\NinjaTrader 8\ApexBot\daily_pnl.json`. API: `RecordTrade()`, `WouldViolateConsistency()`, `TodayPnl`, `TotalPnl`. Serialización manual (sin deps externas).
+- **C5 completo:** `infra/RUNBOOK.md` → checklist pre/durante/post sesión, parámetros, emergencias, escalado.
+- **Git:** branch `stream-b`, commits + PR a `main` pendiente.
+
 ### 2026-06-05 — Sesión 1 (Claude en PC de Esteban / Spoke186)
 - Definido proyecto: pasó de un plan genérico a stack **NinjaTrader 8** (no Python).
 - Recogida la estrategia ICT del operador; aclaradas ambigüedades (tendencia=HH/HL, entrada=fill

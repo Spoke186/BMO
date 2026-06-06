@@ -39,18 +39,18 @@
 | B1 AddOn C# HTTP (account/position/trades/enable/disable) | ✅ scaffold | — |
 | B2 MCP server Node TS (5 tools) | ✅ scaffold | — |
 | B3 Rellenar `AccountName`, `InstrumentName`, `Token`→env | ⛔ | N3,N4,N5 |
-| B4 `npm install` + `npm run build` + registrar en `.mcp.json` | ⬜ | — |
+| B4 `npm install` + `npm run build` + registrar en `.mcp.json` | ✅ | — |
 | B5 Probar loop Claude→MCP→AddOn→NT8 (en Sim) | ⛔ | A2, B3, N6 |
 | B6 `get_today_trades` real | ⬜ | integrar con A/C |
 
 ### Stream C — Infra, Riesgo & Ops  (dueño: `/infra`, `/utils`, `/alerts`)
 | Tarea | Estado | Depende de |
 |-------|--------|-----------|
-| C1 `market_calendar` (festivos/medias sesiones CME) | ⬜ | — |
-| C2 Módulo consistencia 50% (lógica + persistencia) | ⬜ | — (lo integra A5) |
+| C1 `market_calendar` (festivos/medias sesiones CME) | ✅ | — |
+| C2 Módulo consistencia 50% (lógica + persistencia) | ✅ | — (lo integra A5) |
 | C3 Alertas Telegram (trade/error/daily loss/heartbeat) | ⛔ | N8 |
 | C4 VPS opcional (Windows, baja latencia CME) | ⬜ | N6 |
-| C5 Runbook operación (arranque diario, caídas, checklist) | ⬜ | — |
+| C5 Runbook operación (arranque diario, caídas, checklist) | ✅ | — |
 
 ### Infra / repo (compartido)
 | Tarea | Estado |
