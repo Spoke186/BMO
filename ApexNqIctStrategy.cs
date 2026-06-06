@@ -125,6 +125,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// backtest/analyze_backtest.py.
 		private DailyPnlTracker pnlTracker;
 		private int lastTradeCount;
+
+		// Alertas Telegram (Stream C, alerts/TelegramAlerts.cs). Se auto-deshabilita si no hay
+		// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en el entorno (N8 pendiente): wiring inerte
+		// hasta que el operador ponga el token. Solo se instancia en vivo, igual que pnlTracker.
+		private TelegramAlerts alerts;
 		#endregion
 
 		protected override void OnStateChange()
@@ -176,9 +181,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 				// no recontar trades historicos del warmup.
 				pnlTracker     = new DailyPnlTracker();
 				lastTradeCount = SystemPerformance.AllTrades.Count;
+
+				alerts = new TelegramAlerts();
+				alerts.SendAsync(TelegramAlerts.Msg.BotStart, Instrument.FullName);
 			}
 			else if (State == State.Terminated)
 			{
+				alerts?.SendAsync(TelegramAlerts.Msg.BotStop);
 				pnlTracker?.Save();
 			}
 		}
@@ -206,12 +215,26 @@ namespace NinjaTrader.NinjaScript.Strategies
 			UpdateRiskGuards();
 			RecordClosedTrades();
 
-			// Cierre forzado: el menor entre el parametro y el cierre CME del dia
-			// (media sesion CME = 12:45 ET; normal = ForcedExit = 15:55 ET).
-			int forceCloseHhmm = Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]));
-			if (ToTime(Time[0]) >= forceCloseHhmm * 100)
+			// Cierre forzado antes del fin de sesion Apex. En media sesion CME (cierre 1:00 PM ET)
+			// MarketCalendar adelanta el cierre a 12:45 ET; tomamos el mas conservador de los dos.
+			// Usamos Time[0] (hora de la barra; el grafico es ET, misma premisa que la kill zone)
+			// y NO DateTime.Now, para que el backtest tambien respete festivos/medias sesiones.
+			int forcedExitToday = Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]));
+			if (ToTime(Time[0]) >= forcedExitToday * 100)
 			{
 				FlattenAndCancel("Cierre forzado");
+				return;
+			}
+
+			// Festivo CME completo o fin de semana (MarketCalendar, C6): no armar setups.
+			// Cancela cualquier limite que hubiera quedado vivo de una sesion anterior.
+			if (MarketCalendar.ShouldSkipToday(Time[0]))
+			{
+				if (setupState == 1)
+				{
+					CancelEntry();
+					setupState = 0;
+				}
 				return;
 			}
 
@@ -242,6 +265,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				Print($"[CONSISTENCIA] Setup saltado: ganarlo violaria la regla 50% Apex "
 				      + $"(hoy {pnlTracker.TodayPnl:C} + {ProfitTargetUsd:C} vs total {pnlTracker.TotalPnl:C}).");
+				alerts?.SendAsync(TelegramAlerts.Msg.ConsistencyWarning,
+					$"hoy {pnlTracker.TodayPnl:C} vs total {pnlTracker.TotalPnl:C}");
 				return;
 			}
 
@@ -491,7 +516,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if ((accountHighWater - equity) >= TrailingDrawdown)
 			{
 				if (!tradingDisabled)
+				{
 					Print($"[RIESGO] Trailing DD proxy alcanzado ({TrailingDrawdown:C}). Trading deshabilitado.");
+					alerts?.SendAsync(TelegramAlerts.Msg.DailyLossWarning,
+						$"Trailing DD proxy {TrailingDrawdown:C} alcanzado. Trading off.");
+				}
 				tradingDisabled = true;
 			}
 
@@ -500,7 +529,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (sessionPnl <= -MaxDailyLoss)
 			{
 				if (!tradingDisabled)
+				{
 					Print($"[RIESGO] Max daily loss alcanzado ({sessionPnl:C}). Trading deshabilitado hoy.");
+					alerts?.SendAsync(TelegramAlerts.Msg.DailyLossWarning,
+						$"Max daily loss {sessionPnl:C}. Trading off hoy.");
+				}
 				tradingDisabled = true;
 			}
 
@@ -518,7 +551,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			int total = SystemPerformance.AllTrades.Count;
 			for (int i = lastTradeCount; i < total; i++)
-				pnlTracker.RecordTrade(SystemPerformance.AllTrades[i].ProfitCurrency);
+			{
+				double tradePnl = SystemPerformance.AllTrades[i].ProfitCurrency;
+				pnlTracker.RecordTrade(tradePnl);
+				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+			}
 			lastTradeCount = total;
 		}
 		#endregion
@@ -562,6 +599,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				tradedToday = true;
 				setupState  = 0; // el setup paso a posicion; stop/target la gestionan
+				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
+					$"{(execution.Order.Name == "LongFVG" ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
 			}
 		}
 		#endregion

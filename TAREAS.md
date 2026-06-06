@@ -49,10 +49,10 @@
 | C1 `market_calendar` TS para MCP | ✅ `infra/marketCalendar.ts` | — |
 | C1b `MarketCalendar.cs` para NinjaScript (estrategia) | ✅ `infra/MarketCalendar.cs` | — |
 | C2 Módulo consistencia 50% (lógica + persistencia) | ✅ `infra/DailyPnlTracker.cs` (integrado A5) | — |
-| C3 Alertas Telegram (trade/error/daily loss/heartbeat) | 🚧 `alerts/TelegramAlerts.cs` listo; activa al pasar N8 | N8 |
+| C3 Alertas Telegram (trade/error/daily loss/heartbeat) | 🚧 `alerts/TelegramAlerts.cs` + wiring en estrategia ✅ (BotStart/Stop, TradeOpened/Closed, DailyLoss, Consistency); solo falta token N8. Heartbeat timer no cableado (opcional) | N8 |
 | C4 VPS opcional (Windows, baja latencia CME) | 🚧 research ✅ (`infra/VPS_RESEARCH.md`); setup espera N6 | N6 |
 | C5 Runbook operación (arranque diario, caídas, checklist) | ✅ `infra/RUNBOOK.md` | — |
-| C6 Integrar `MarketCalendar.cs` en estrategia | ✅ `ShouldSkipToday` + `BotForceCloseTime` en `ApexNqIctStrategy.cs` | C1b |
+| C6 Integrar `MarketCalendar.cs` en estrategia | ✅ `ShouldSkipToday` + `BotForceCloseTime` en `OnBarUpdate` (skip festivo/finde + cierre forzado 12:45 en media sesion CME) | C1b |
 
 ### Infra / repo (compartido)
 | Tarea | Estado |

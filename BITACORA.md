@@ -68,6 +68,26 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ## 3. Cronología
 
+### 2026-06-06 — Sesión 4 (Claude Stream A en PC de Esteban / Spoke186)
+- **PR #6 (stream-c de ptala611-oss) revisado y mergeado a `main`:** `MarketCalendar.cs` (C1b),
+  `TelegramAlerts.cs` (C3 skeleton), `.env.example` Telegram. Sin secretos (solo `CHANGE_ME`). CLEAN.
+- **C6 hecho — `MarketCalendar.cs` integrado en la estrategia:** en `OnBarUpdate`:
+  - Cierre forzado ahora = `Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]))` →
+    media sesión CME cierra a **12:45 ET** en lugar de 15:55.
+  - `MarketCalendar.ShouldSkipToday(Time[0])` → no arma setups en festivo CME / fin de semana
+    (incl. cancela límite vivo). **Decisión:** uso `Time[0]` (barra, gráfico en ET) y NO
+    `DateTime.UtcNow` como sugería el comentario de `MarketCalendar.cs`, para que el backtest
+    también respete el calendario y por consistencia con la lógica de kill zone existente.
+- **C3 wiring hecho — `TelegramAlerts` cableado al ciclo de la estrategia:** campo `alerts`,
+  init en `State.Realtime` (BotStart), BotStop en `Terminated`, TradeOpened en `OnExecutionUpdate`,
+  TradeClosed en `RecordClosedTrades`, DailyLossWarning en trailing-DD/daily-loss, ConsistencyWarning
+  en el skip de consistencia. **Inerte sin token** (la clase se auto-deshabilita si faltan las env
+  vars) → se activa solo al poner **N8**. Heartbeat timer NO cableado (opcional, evita `System.Timers`).
+- **No compilado aún (NT8):** A2 sigue pendiente; revisado estáticamente (mismo namespace para las
+  3 clases, `Math`/`Instrument.FullName`/enum `Msg` válidos). Validar en F5 + Sim cuando haya NT8.
+- **Pendientes que siguen bloqueados:** A2/A3/A4 (NT8), A5 validar Sim, B3/B5/B6/N4 (Apex N1),
+  C4 (N6), encender C3 (N8). A6 es fase 2.
+
 ### 2026-06-05 — Sesión 3 (Claude Stream A en PC de Esteban / Spoke186)
 - Branch `stream-a` creado.
 - **Review compile (pre-A2):** revisada `ApexNqIctStrategy.cs` + `ntaddon/ApexBridgeAddOn.cs`
