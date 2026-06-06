@@ -30,7 +30,7 @@
 |------------------|--------|---------|--------|
 | **Spoke186** (Esteban, operador) | **A — Estrategia & Backtest** | Tiene NT8, conoce la estrategia, aporta datos Apex y el "ojo" para tunear | `stream-a` |
 | **2317SECH** | **B — MCP & Bridge** | Trabajo de dev (C# AddOn + Node TS MCP), arranca sin Apex | `stream-b` |
-| **ptala611-oss** | **C — Infra, Riesgo & Ops** | Calendar CME, consistencia, alertas, runbook — independiente de Apex | `stream-c` |
+| **ptala611-oss (Alan)** | **C — Infra, Riesgo & Ops** | Calendar CME, consistencia, alertas, **bot Telegram con señales** | `stream-c` |
 
 > La asignación es por encaje lógico. Si las habilidades reales difieren, **B y C se pueden
 > intercambiar** sin problema. **A debe quedarse con quien tenga NinjaTrader 8 instalado.**
@@ -130,9 +130,9 @@ Arrancar en paralelo: A compila+backtest, B scaffold AddOn+MCP, C calendar+alert
 ## Estado global (actualizar al mergear)
 | Stream | Branch | Último hito | Estado |
 |--------|--------|-------------|--------|
-| A (Spoke186) | stream-a | Estrategia **15m/1m** (Liquidity Sweep+FVG, de SECH) + 2 fixes compile (CS0234/CS1501) | 🚧 falta F5 + backtest |
-| B (2317SECH) | stream-b | Entregó la estrategia + `estrategia_liquidity_sweep_fvg.md`; MCP/AddOn scaffold | 🚧 build/mock + datos Apex |
-| C (ptala611-oss) | stream-c | Calendar + consistencia + alertas + runbook + C6 integrado | ✅ base hecha; falta token N8 / VPS |
+| A (Spoke186) | stream-a | Estrategia 15m/1m + **compila limpio en NT8 (sesión 9)**; backtest en curso (Setup A ~0 trades por rango ancho) | 🚧 backtest + tuning |
+| B (2317SECH/Sergio) | feat/* | MCP **7 tools** (B6/B7 mergeado, `/setup`+`/trades`); **Setup B** (PR #24) en estrategia | 🚧 activar Notion (N11) + datos Apex |
+| C (ptala611-oss/Alan) | stream-c | Calendar + consistencia + alertas + runbook | 🚧 **bot Telegram con señales** (C8) + token N8 |
 
 > **Integración A↔B:** `ApexNqIctStrategy.cs` referencia `ApexBridgeState` (en el AddOn).
 > Ambos `.cs` deben estar en `bin\Custom\` antes de compilar, o falla por símbolo faltante.

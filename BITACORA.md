@@ -21,10 +21,10 @@ personas, cada una con un Claude Code en su PC. Repo: **https://github.com/Spoke
 | Mercado / contrato | **2 contratos NQ mini** (el bracket USD fijo lo implica; MNQ no sirve con esos USD) |
 | Timeframes | **Sesgo/barrida/CHoCH/FVG 15m · gatillo (confirmación) 1m**. Serie primaria = **1m**; 15m por `AddDataSeries` |
 | Tendencia (sesgo) | Estructura **HH/HL** por pivotes fractales (fuerza 3 en 15m) |
-| Entrada | Sweep rango pre-apertura → CHoCH + displacement (cuerpo ≥1.5×ATR) → **FVG 15m** → retroceso al FVG + **confirmación 1m** (rechazo o mini-CHoCH) → **mercado** al cierre 1m, a favor de tendencia |
+| Entrada | **Setup A (FVG):** sweep rango pre-apertura → CHoCH+displacement (≥1.5×ATR) → FVG 15m → retroceso + confirmación 1m → mercado. **Setup B (`EnableSetupB`, default ON):** barrida del máx/mín pre-mercado en 1m → entrada directa SIN CHoCH/FVG ni filtro de tendencia (más trades) |
 | Stop | **USD fijo $250** (`CalculationMode.Currency`). El extremo del sweep solo invalida el límite pendiente |
 | Take profit | **USD fijo $700** (~1:2.8), ambas direcciones |
-| Ventana | **Ejecución 09:30–14:00 ET** (08:30–13:00 Col). A 14:00 ET **deja de abrir**; posición abierta **corre a TP/SL** (operador G3, NO cierre total). NT8 aplana al cierre de sesión (`IsExitOnSessionCloseStrategy=true`). **1 setup/día** |
+| Ventana | **Entrada 09:30–11:00 ET** (08:30–10:00 Col) — `KillZoneEnd=1100` (revisado sesión 11; sesión 6 fue 1400). `ForcedExit` 14:00 bloquea entradas tardías; posición abierta **corre a TP/SL** (G3, NO cierre total); NT8 aplana al cierre de sesión. **1 setup/día** |
 | Plan Apex | 50K · Trailing DD $2,500 · Profit goal $3,000 · Daily loss propio $400 |
 | Consistencia | 50% lun–vie (ningún día > 50% del profit acumulado). **No en código aún** (manual) |
 | MCP | **Node + TypeScript** · alcance **solo lectura + enable/disable** · corre en **localhost** |
@@ -67,6 +67,29 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 ---
 
 ## 3. Cronología
+
+### 2026-06-06 — Sesión 11 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: aceptar PR #24 (Setup B de Sergio), revisar ventana a 11:00, repartir nuevas tareas.**
+
+- **Backtest (sesión 10/11):** con sesión ETH el rango pre-apertura arma todos los días (`[PRE-AP]
+  Range` en Output). Pero **Setup A (FVG) daba ~0 trades:** el rango overnight (Globex ~15h) es muy
+  ancho → la barrida del máx/mín casi nunca pasa en RTH. No es bug, es la naturaleza del setup.
+  Instrumento correcto = **NQ** (`NQ ##-##` continuo), NO ZW (trigo) ni MNQ.
+- **PR #24 de Sergio mergeado a `main`** (autorizado por el operador):
+  - **Setup B (Opening Range Sweep):** entrada directa cuando una vela 1m barre el máx/mín pre-mercado
+    y recupera, **sin esperar CHoCH+FVG ni filtro de tendencia**. Flag `EnableSetupB` (default ON).
+    Genera más trades → ataca el 0-setups de Setup A. Variante más simple que el `.md`.
+  - **Fix `activeSignal`:** exits correctos para señales Setup A (`LongFVG/ShortFVG`) y B
+    (`LongSweep/ShortSweep`). Correcto.
+  - Añade `BMO.csproj`/`nuget.config` (build fuera de NT8) + `resultados/` (screenshots de Sergio).
+- **G2 revisado (operador):** `KillZoneEnd` **1400 → 1100** → ventana 09:30–11:00 ET (kill zone NY).
+  Revierte la decisión de sesión 6. Actualizado §1 + TAREAS A4/G2.
+- **Nuevas tareas (TAREAS §E):**
+  - **Alan (Stream C):** C8 — bot Telegram con **señales** de entrada en vivo (dir/precio/setup/stop/target).
+  - **Sergio:** B9 — activar bitácora Notion (token N11); A12 — exponer Setup B en `/setup`.
+  - **Esteban:** A7 backtest con Setup B → A13 comparar A vs B → A8 tuning.
+- **Sin cambios de código míos** (solo merge + docs).
 
 ### 2026-06-06 — Sesión 10 (Claude Stream A en PC de Esteban / Spoke186)
 
