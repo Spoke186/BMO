@@ -26,7 +26,9 @@ ICT continuación de tendencia:
 ## Riesgo Apex en el código
 - ✅ Stop obligatorio, no DCA, 1 entrada/setup, ventana horaria, max daily loss ($400).
 - ⚠️ Trailing DD = aproximación local (high-water). Apex la calcula en su server.
-- ❌ Consistencia 50% NO implementada (falta persistencia P&L entre días). Vigilancia manual.
+- ⚠️ Consistencia 50%: integrada en **tiempo real** vía `infra/DailyPnlTracker.cs` (persiste JSON).
+  En **backtest** se valida post-hoc con `backtest/analyze_backtest.py` (el tracker usa `DateTime.Now`,
+  inválido sobre datos históricos). Apex sigue siendo la verdad oficial.
 
 ## Convenciones
 - Parámetros TODO por Inputs (`[NinjaScriptProperty]`), nada hardcodeado.
@@ -36,7 +38,8 @@ ICT continuación de tendencia:
 
 ## Pendiente / roadmap
 1. Backtest + tuning (Strategy Analyzer).
-2. Persistencia P&L → regla consistencia 50% real.
+2. ~~Persistencia P&L → regla consistencia 50% real~~ → hecho en tiempo real (`DailyPnlTracker`).
+   Falta validar en Sim que `RecordTrade`/`WouldViolateConsistency` disparan bien.
 3. TP "siguiente liquidez" (fase 2).
 4. Alertas Telegram.
 

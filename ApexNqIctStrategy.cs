@@ -118,6 +118,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private bool tradingDisabled;       // por daily loss o trailing DD
 		private double sessionStartCumPnl;  // realizado acumulado al abrir la sesion
 		private double accountHighWater;    // pico de equity para proxy de trailing DD
+
+		// Consistencia 50% Apex (modulo de Stream C, infra/DailyPnlTracker.cs).
+		// SOLO en tiempo real: usa DateTime.Now y persiste a disco, lo que en backtest
+		// seria incorrecto. En backtest la consistencia se verifica post-hoc con
+		// backtest/analyze_backtest.py.
+		private DailyPnlTracker pnlTracker;
+		private int lastTradeCount;
 		#endregion
 
 		protected override void OnStateChange()
@@ -161,6 +168,19 @@ namespace NinjaTrader.NinjaScript.Strategies
 				atr = ATR(BarsArray[0], 14);
 				accountHighWater = StartingBalance;
 			}
+			else if (State == State.Realtime)
+			{
+				// Activar el tracker de consistencia SOLO al pasar a tiempo real. En backtest
+				// (State.Historical) DateTime.Now no corresponde a la barra y persistir el JSON
+				// corromperia el seguimiento real. lastTradeCount parte del conteo actual para
+				// no recontar trades historicos del warmup.
+				pnlTracker     = new DailyPnlTracker();
+				lastTradeCount = SystemPerformance.AllTrades.Count;
+			}
+			else if (State == State.Terminated)
+			{
+				pnlTracker?.Save();
+			}
 		}
 
 		protected override void OnBarUpdate()
@@ -184,6 +204,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ResetForNewSession();
 
 			UpdateRiskGuards();
+			RecordClosedTrades();
 
 			// Cierre forzado antes del fin de sesion Apex.
 			if (ToTime(Time[0]) >= ForcedExit * 100)
@@ -207,6 +228,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (!ApexBridgeState.TradingEnabled || !inKillZone || tradedToday || tradingDisabled
 			    || trend == 0 || Position.MarketPosition != MarketPosition.Flat)
 				return;
+
+			// Consistencia 50% Apex (solo en vivo): si GANAR este setup (ProfitTargetUsd) hiciera
+			// que el P&L de hoy supere el 50% del profit acumulado, saltarlo. El backtest no entra
+			// aqui (pnlTracker es null fuera de tiempo real); ahi lo valida analyze_backtest.py.
+			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
+			{
+				Print($"[CONSISTENCIA] Setup saltado: ganarlo violaria la regla 50% Apex "
+				      + $"(hoy {pnlTracker.TodayPnl:C} + {ProfitTargetUsd:C} vs total {pnlTracker.TotalPnl:C}).");
+				return;
+			}
 
 			TryArmSetup();
 		}
@@ -469,6 +500,20 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (tradingDisabled)
 				FlattenAndCancel("Riesgo: flat");
+		}
+
+		// Registra en el tracker de consistencia los trades cerrados desde la ultima barra.
+		// Solo en vivo (pnlTracker null en backtest). Usa el conteo de SystemPerformance para
+		// evitar problemas de timing con OnExecutionUpdate (el Trade puede no estar listo ahi).
+		private void RecordClosedTrades()
+		{
+			if (pnlTracker == null)
+				return;
+
+			int total = SystemPerformance.AllTrades.Count;
+			for (int i = lastTradeCount; i < total; i++)
+				pnlTracker.RecordTrade(SystemPerformance.AllTrades[i].ProfitCurrency);
+			lastTradeCount = total;
 		}
 		#endregion
 
