@@ -14,7 +14,10 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 - Descartado: Python+API y TradingView+PickMyTrade.
 
 ## Estrategia (decidida)
-ICT continuación de tendencia — **temporalidades: 15m sesgo/FVG, 1m gatillo**:
+Dos setups ICT, comparten `tradedToday` (1 entrada/día total). **Ventana NY: 9:30–11:00 ET = Colombia 8:30–10:00 (EDT). En EST (invierno) ajustar `KillZoneEnd` a 1000.**
+
+### Setup A — FVG (mayor calidad, requiere confluencia 15m)
+Temporalidades: **15m sesgo/FVG, 1m gatillo**.
 1. **Tendencia** = estructura HH/HL en **15m** (pivote fractal, fuerza 3).
 2. **Sweep** de liquidez contra-tendencia en **15m** (perfora el **máx/mín del rango pre-apertura** —medido en barras 1m desde apertura de sesión hasta 9:30 ET— y el cierre recupera). Requiere datos overnight (Globex/24h) en el gráfico.
 3. **CHoCH + Desplazamiento** en **15m**: tras la barrida, vela cierra más allá del último swing en dirección tendencia Y cuerpo ≥ 1.5×ATR(14). Confirma reversión institucional.
@@ -22,8 +25,26 @@ ICT continuación de tendencia — **temporalidades: 15m sesgo/FVG, 1m gatillo**
 5. **Retroceso al FVG** en **1m**: esperar que el precio entre a la zona del gap.
 6. **Confirmación en 1m** (al menos una): vela de rechazo (mecha/cuerpo ≥ 1.5) O mini-CHoCH en 1m dentro del FVG.
 7. **Entrada** = mercado al cierre de la vela de confirmación 1m, a favor de tendencia.
-8. **Stop $250 fijo / TP $700 fijo** (1:3 RR). 2 contratos fijos siempre.
-9. **Ventana** NY 9:30–14:00 ET (08:30–13:00 Colombia), **1 setup/día**. A las 14:00 ET el bot **deja de abrir** nuevas entradas; una posición ya abierta **corre hasta su TP/SL** (decisión operador, NO cierre total — el cierre de sesión NT8 la aplana al final si sigue viva).
+
+### Setup B — Sweep directo (entrada inmediata, sin FVG)
+Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles de barrida:
+1. Rango pre-mercado (8:00–9:30 ET): `preMarketHigh` / `preMarketLow`
+2. **PDH/PDL** (Previous Day High/Low, `EnablePdhPdl=true`): niveles ICT de mayor liquidez.
+
+- **LONG** (sweep de mínimo): `Low[0] < nivel - minSweep` Y `Close[0] > nivel` Y vela alcista.
+- **SHORT** (sweep de máximo): `High[0] > nivel + minSweep` Y `Close[0] < nivel` Y vela bajista.
+- **Filtro dirección**: `EnableDailyBiasFilter=true` — dia alcista → solo longs; dia bajista → solo shorts.
+  `SetupBRequiresTrend=false` (default): el bias filter ya filtra dirección (evita conflictos).
+- `Allow2ndTradeIfWinner=false` (default): si `true`, habilita 2do trade si el primero fue ganador.
+- Si Setup A ya está armado (`setupState == 1`), Setup B no dispara.
+- Desactivable con `EnableSetupB = false`.
+
+### Común a ambos setups
+- **Stop $250 fijo / TP $700 fijo** (1:3 RR). 2 contratos fijos siempre.
+- **Ventana entrada**: `KillZoneStart=930` → `KillZoneEnd=1130` ET (Colombia 8:30–10:30 EDT).
+- Posición abierta antes de `KillZoneEnd` **corre hasta TP/SL**; `ForcedExit=1400` ET solo bloquea nuevas entradas, no aplana posición activa.
+- **1 setup/día** por defecto. `tradedToday` compartido entre A y B. Con `Allow2ndTradeIfWinner=true`: 2 trades posibles si primero gana.
+- Señales: `LongFVG`/`ShortFVG` (Setup A), `LongSweep`/`ShortSweep` (Setup B).
 
 ## Riesgo Apex en el código
 - ✅ Stop obligatorio, no DCA, 1 entrada/setup, ventana horaria, max daily loss ($400).
