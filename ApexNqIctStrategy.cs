@@ -127,9 +127,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private int lastTradeCount;
 
 		// Alertas Telegram (Stream C, alerts/TelegramAlerts.cs). Se auto-deshabilita si no hay
-		// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en el entorno (N8 pendiente): wiring inerte
-		// hasta que el operador ponga el token. Solo se instancia en vivo, igual que pnlTracker.
+		// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID en el entorno: inerte hasta que el operador ponga el token.
+		// Solo se instancia en vivo, igual que pnlTracker.
 		private TelegramAlerts alerts;
+		private System.Timers.Timer heartbeatTimer; // ping cada 5 min para confirmar que el bot sigue vivo
 		#endregion
 
 		protected override void OnStateChange()
@@ -184,9 +185,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				alerts = new TelegramAlerts();
 				alerts.SendAsync(TelegramAlerts.Msg.BotStart, Instrument.FullName);
+
+				// Heartbeat cada 5 minutos: confirma que el proceso NT8 sigue corriendo.
+				// Solo en vivo; en backtest no se llega a State.Realtime.
+				heartbeatTimer = new System.Timers.Timer(5 * 60 * 1000);
+				heartbeatTimer.Elapsed += (s, e) => alerts.SendAsync(TelegramAlerts.Msg.Heartbeat);
+				heartbeatTimer.AutoReset = true;
+				heartbeatTimer.Start();
 			}
 			else if (State == State.Terminated)
 			{
+				heartbeatTimer?.Stop();
+				heartbeatTimer?.Dispose();
 				alerts?.SendAsync(TelegramAlerts.Msg.BotStop);
 				pnlTracker?.Save();
 			}

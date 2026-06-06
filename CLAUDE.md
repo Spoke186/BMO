@@ -42,7 +42,7 @@ ICT continuación de tendencia:
    Falta validar en Sim que `RecordTrade`/`WouldViolateConsistency` disparan bien.
 3. TP "siguiente liquidez" (fase 2).
 4. ~~Alertas Telegram~~ → `alerts/TelegramAlerts.cs` + wiring en estrategia hecho; inerte sin token,
-   se activa al poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (N8). Heartbeat timer opcional sin cablear.
+   se activa al poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (N8). Heartbeat timer cableado en `State.Realtime` (cada 5 min, solo en vivo).
 5. Calendario CME (`infra/MarketCalendar.cs`) integrado: skip festivo/finde + cierre 12:45 media sesión.
    **Mantenimiento:** fechas hardcoded 2026–2027; actualizar cada diciembre.
 

@@ -5,8 +5,9 @@
 // CONFIGURACIÓN (antes de usar):
 //   Variables de entorno (igual que el resto del proyecto — ver .env.example):
 //     TELEGRAM_BOT_TOKEN=<token del bot @BotFather>
-//     TELEGRAM_CHAT_ID=<chat id numérico del operador>
+//     TELEGRAM_CHAT_ID=<chat id numérico del operador, o varios separados por coma>
 //   Setear en Windows: setx TELEGRAM_BOT_TOKEN "123456:ABC..."
+//                      setx TELEGRAM_CHAT_ID "111111111,222222222"   ← múltiples receptores
 //   NT8 debe reiniciarse después de setx para leer los nuevos valores.
 //
 // INTEGRACIÓN (Stream A — ApexNqIctStrategy.cs):
@@ -40,9 +41,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
     public class TelegramAlerts
     {
-        private readonly string _token;
-        private readonly string _chatId;
-        private readonly bool   _enabled;
+        private readonly string   _token;
+        private readonly string[] _chatIds; // uno o varios IDs separados por coma en la env var
+        private readonly bool     _enabled;
 
         // Emoji prefixes para identificar tipo de alerta de un vistazo
         public enum Msg
@@ -59,9 +60,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         public TelegramAlerts()
         {
-            _token  = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
-            _chatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID")   ?? "";
-            _enabled = !string.IsNullOrEmpty(_token) && !string.IsNullOrEmpty(_chatId);
+            _token   = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
+            string raw = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID") ?? "";
+            _chatIds = raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            _enabled = !string.IsNullOrEmpty(_token) && _chatIds.Length > 0;
         }
 
         /// <summary>
@@ -114,22 +116,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         private void Post(string text)
         {
-            try
+            string url       = $"https://api.telegram.org/bot{_token}/sendMessage";
+            string escapedText = EscapeJson(text);
+            foreach (string chatId in _chatIds)
             {
-                string url     = $"https://api.telegram.org/bot{_token}/sendMessage";
-                string payload = $"{{\"chat_id\":\"{_chatId}\",\"text\":{EscapeJson(text)}}}";
-
-                using (var wc = new WebClient())
+                try
                 {
-                    wc.Headers[HttpRequestHeader.ContentType] = "application/json";
-                    wc.UploadString(url, "POST", payload);
+                    string payload = $"{{\"chat_id\":\"{chatId}\",\"text\":{escapedText}}}";
+                    using (var wc = new WebClient())
+                    {
+                        wc.Headers[HttpRequestHeader.ContentType] = "application/json";
+                        wc.UploadString(url, "POST", payload);
+                    }
                 }
-            }
-            catch
-            {
-                // Alerta no crítica: loggear localmente si falla, no crashear el bot.
-                // NT8 no expone un logger estático; el caller puede envolver en try/catch
-                // y usar Print() si necesita visibilidad del fallo.
+                catch
+                {
+                    // Alerta no crítica: si falla un destinatario, seguir con los demás.
+                }
             }
         }
 
