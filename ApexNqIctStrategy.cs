@@ -145,6 +145,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[Display(Name = "Setup C: barras max para retorno al OB (1m)", Order = 27, GroupName = "2. Estrategia")]
 		[Range(5, 120)]
 		public int OBValidBars { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Setup B: usar PDH/PDL como niveles adicionales", Order = 28, GroupName = "2. Estrategia")]
+		public bool EnablePdhPdl { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Permitir 2do trade si el primero fue ganador", Order = 29, GroupName = "2. Estrategia")]
+		public bool Allow2ndTradeIfWinner { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -221,6 +229,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private string  notionCurrentPageId;
 		private double  lastEntryPrice;
 		private int     lastEntryDir;
+
+		// Previous Day High/Low — niveles ICT de mayor liquidez para Setup B.
+		// sessionHigh/Low acumula la sesion activa; al resetear se guarda como prevDay.
+		private double sessionHigh     = double.MinValue;
+		private double sessionLow      = double.MaxValue;
+		private double prevDayHigh;
+		private double prevDayLow;
+		private bool   prevDayReady;
+		private bool   allowedSecondTrade; // true si ya se permitio el 2do trade hoy
 		#endregion
 
 		protected override void OnStateChange()
@@ -249,17 +266,19 @@ namespace NinjaTrader.NinjaScript.Strategies
 				SweepChochMaxBars15m = 8;     // 8 barras 15m = 2h para ver CHoCH despues de la barrida
 				StopBufferTicks      = 2;
 				EnableSetupB         = true;
-				MinSweepTicks        = 10;    // sweep moderado: 10 ticks = 2.5 pts NQ
-				MinBodyTicks         = 6;     // cuerpo minimo: 6 ticks = 1.5 pts NQ
-				SetupBRequiresTrend     = true;  // alinear con sesgo 15m mejora win rate
-				EnableDailyBiasFilter   = true;  // solo longs si premkt > cierre ayer, solo shorts si < cierre
+				MinSweepTicks        = 6;     // sweep minimo: 6 ticks = 1.5 pts NQ
+				MinBodyTicks         = 4;     // cuerpo minimo: 4 ticks = 1 pt NQ
+				SetupBRequiresTrend     = false; // bias filter (dia alcista/bajista) ya filtra la direccion
+				EnableDailyBiasFilter   = true;  // solo longs en dia alcista, solo shorts en dia bajista
 				PreMarketStartTime   = 800;   // rango pre-mercado: 8:00–9:30 ET (pre-market US)
-				SetupBMaxMinutes     = 30;    // primeros 30 min del kill zone (9:30-10:00 ET)
+				SetupBMaxMinutes     = 0;     // 0 = toda la kill zone (9:30-11:00 ET)
 				EnableSetupC         = false; // OB solo sin sweep = sin validacion → off por defecto
 				MinOBBodyTicks       = 20;    // desplazamiento minimo: 20 ticks = 5 pts NQ
 				OBValidBars          = 45;    // OB valido por 45 barras 1m = 45 min
+				EnablePdhPdl         = true;  // PDH/PDL: niveles de liquidez adicionales para Setup B
+				Allow2ndTradeIfWinner = false; // 1 trade/dia por defecto; true = mas frecuencia
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia)
-				KillZoneEnd          = 1100;  // 11:00 ET = Colombia 10:00 (EDT). En EST (invierno): 1000.
+				KillZoneEnd          = 1130;  // 11:30 ET = Colombia 10:30 (EDT). Mas ventana = mas frecuencia.
 				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas; posicion abierta corre a TP/SL
 				                             // (operador G3: "dejar que termine, 1 oportunidad/dia")
 				StartingBalance      = 50000;
@@ -367,6 +386,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 					}
 				}
 			}
+
+			// Acumular rango de sesion para PDH/PDL del dia siguiente.
+			sessionHigh = Math.Max(sessionHigh, High[0]);
+			sessionLow  = Math.Min(sessionLow,  Low[0]);
 
 			UpdateRiskGuards();
 			RecordClosedTrades();
@@ -727,27 +750,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			if (!ApexBridgeState.TradingEnabled) return;
 
-			// Sesgo diario: el punto medio del rango pre-mercado vs cierre de ayer.
-			// Si premkt esta por encima del cierre anterior = dia alcista = solo longs.
-			// Si esta por debajo = dia bajista = solo shorts.
-			// Filtra shorts en bull market y longs en bear market (problema principal).
+			double minSweep = MinSweepTicks * TickSize;
+			double minBody  = MinBodyTicks  * TickSize;
+
+			bool shortOk = !SetupBRequiresTrend || trend != 1;
+			bool longOk  = !SetupBRequiresTrend || trend != -1;
+
+			// Sesgo diario: punto medio del rango pre-mercado vs cierre de ayer.
+			// Dia alcista = solo longs (short bloqueado). Dia bajista = solo shorts.
+			// Un solo filtro de direccion evita el conflicto con SetupBRequiresTrend.
 			if (EnableDailyBiasFilter && prevSessionClose > 0 && preMarketHigh > double.MinValue)
 			{
 				double midRange = (preMarketHigh + preMarketLow) / 2.0;
-				bool bullishDay = midRange > prevSessionClose;
-				bool bearishDay = midRange < prevSessionClose;
-				if (bullishDay) // dia alcista: bloquear shorts
-				{
-					if (High[0] > preMarketHigh) return; // sweep del high → short bloqueado
-				}
-				else if (bearishDay) // dia bajista: bloquear longs
-				{
-					if (Low[0] < preMarketLow) return;  // sweep del low → long bloqueado
-				}
+				if (midRange > prevSessionClose) shortOk = false; // dia alcista: no shorts
+				if (midRange < prevSessionClose) longOk  = false; // dia bajista: no longs
 			}
 
 			// Filtro horario: solo primeros SetupBMaxMinutes del kill zone.
-			// Los sweeps ICT de calidad ocurren en los primeros 15-30 min post-apertura.
 			if (SetupBMaxMinutes > 0)
 			{
 				var kzStart = new DateTime(Time[0].Year, Time[0].Month, Time[0].Day,
@@ -755,31 +774,32 @@ namespace NinjaTrader.NinjaScript.Strategies
 				if (Time[0] >= kzStart.AddMinutes(SetupBMaxMinutes)) return;
 			}
 
-			double minSweep = MinSweepTicks * TickSize;
-			double minBody  = MinBodyTicks  * TickSize;
-
-			// Sweep del HIGH pre-mercado: mecha perfora, cierre recupera, cuerpo bajista.
-			// Confluencia: ademas del sweep, verificar OB bajista O FVG bajista en la zona.
-			bool shortOk = !SetupBRequiresTrend || trend != 1;
-			if (shortOk
-			    && High[0]  > preMarketHigh + minSweep
-			    && Close[0] < preMarketHigh
-			    && (Open[0] - Close[0]) >= minBody
-			    && HasConfluence(-1))
+			// --- Barridas LONG (sweep de un minimo, reversal alcista) ---
+			if (longOk && (Close[0] - Open[0]) >= minBody)
 			{
-				EnterSweepB(-1);
-				return;
+				// Nivel 1: rango pre-mercado (8:00-9:30 ET)
+				if (Low[0] < preMarketLow - minSweep && Close[0] > preMarketLow)
+				{ EnterSweepB(1, "PreMktL"); return; }
+
+				// Nivel 2: Previous Day Low — maximo nivel de liquidez sell-side (ICT)
+				if (EnablePdhPdl && prevDayReady
+				    && prevDayLow < preMarketLow - 10 * TickSize // no duplicar si estan muy juntos
+				    && Low[0] < prevDayLow - minSweep && Close[0] > prevDayLow)
+				{ EnterSweepB(1, "PDL"); return; }
 			}
 
-			// Sweep del LOW pre-mercado: mecha perfora, cierre recupera, cuerpo alcista.
-			bool longOk = !SetupBRequiresTrend || trend != -1;
-			if (longOk
-			    && Low[0]   < preMarketLow - minSweep
-			    && Close[0] > preMarketLow
-			    && (Close[0] - Open[0]) >= minBody
-			    && HasConfluence(1))
+			// --- Barridas SHORT (sweep de un maximo, reversal bajista) ---
+			if (shortOk && (Open[0] - Close[0]) >= minBody)
 			{
-				EnterSweepB(1);
+				// Nivel 1: rango pre-mercado
+				if (High[0] > preMarketHigh + minSweep && Close[0] < preMarketHigh)
+				{ EnterSweepB(-1, "PreMktH"); return; }
+
+				// Nivel 2: Previous Day High — maximo nivel de liquidez buy-side (ICT)
+				if (EnablePdhPdl && prevDayReady
+				    && prevDayHigh > preMarketHigh + 10 * TickSize
+				    && High[0] > prevDayHigh + minSweep && Close[0] < prevDayHigh)
+				{ EnterSweepB(-1, "PDH"); return; }
 			}
 		}
 
@@ -814,7 +834,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			return result;
 		}
 
-		private void EnterSweepB(int dir)
+		private void EnterSweepB(int dir, string source = "")
 		{
 			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
 			{
@@ -826,12 +846,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 			SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
 			SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
 
-			if (dir == 1)
-				EnterLong(0, Contratos, sig);
-			else
-				EnterShort(0, Contratos, sig);
+			if (dir == 1) EnterLong(0, Contratos, sig);
+			else          EnterShort(0, Contratos, sig);
 
-			Print($"[SETUP-B] {sig} PreMkt=[{preMarketLow:F2},{preMarketHigh:F2}]");
+			string lvlInfo = (source == "PDL" || source == "PDH")
+				? $"PDH={prevDayHigh:F2} PDL={prevDayLow:F2}"
+				: $"PreMkt=[{preMarketLow:F2},{preMarketHigh:F2}]";
+			Print($"[SETUP-B] {sig} [{source}] {lvlInfo}");
 		}
 		#endregion
 
@@ -970,6 +991,17 @@ namespace NinjaTrader.NinjaScript.Strategies
 		#region Riesgo Apex (aproximaciones locales)
 		private void ResetForNewSession()
 		{
+			// Guardar PDH/PDL de la sesion que cierra antes de resetear el rango.
+			if (sessionHigh > double.MinValue && sessionLow < double.MaxValue)
+			{
+				prevDayHigh  = sessionHigh;
+				prevDayLow   = sessionLow;
+				prevDayReady = true;
+				Print($"[PDH/PDL] Nueva sesion: PDH={prevDayHigh:F2} PDL={prevDayLow:F2}");
+			}
+			sessionHigh = double.MinValue;
+			sessionLow  = double.MaxValue;
+
 			tradedToday         = false;
 			tradingDisabled     = false;
 			setupState          = 0;
@@ -994,6 +1026,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			obLow               = 0;
 			obDir               = 0;
 			obBar               = 0;
+			allowedSecondTrade  = false;
 			sessionStartCumPnl  = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
 			lock (ApexBridgeState.TodayTradesLock)
 				ApexBridgeState.TodayTrades.Clear();
@@ -1043,12 +1076,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// para evitar problemas de timing con OnExecutionUpdate.
 		private void RecordClosedTrades()
 		{
-			if (pnlTracker == null) return;
 			int total = SystemPerformance.AllTrades.Count;
 			for (int i = lastTradeCount; i < total; i++)
 			{
 				var    t        = SystemPerformance.AllTrades[i];
 				double tradePnl = t.ProfitCurrency;
+
+				// 2do trade: si el primero fue ganador, abrir una segunda ventana de entrada.
+				// Funciona en backtest Y en tiempo real (no depende de pnlTracker).
+				if (Allow2ndTradeIfWinner && tradePnl > 0 && tradedToday && !allowedSecondTrade)
+				{
+					tradedToday        = false;
+					allowedSecondTrade = true;
+					Print($"[2DO-TRADE] Trade ganador (+{tradePnl:C}). tradedToday=false → 2do trade habilitado.");
+				}
+
+				if (pnlTracker == null) continue;
+
 				pnlTracker.RecordTrade(tradePnl);
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
 
