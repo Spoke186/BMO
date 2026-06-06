@@ -71,17 +71,22 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 
 ### 2026-06-06 — Sesión 12 (Claude Stream A en PC de Esteban / Spoke186)
 
-**Tema: fijar sesión ETH en código + A13 (herramienta comparación Setup A vs B) + diagnóstico del backtest.**
+**Tema: A13 (herramienta comparación Setup A vs B) + intento (revertido) de fijar sesión ETH + sync NT8.**
 
-- **Sesión ETH fijada en código (decisión operador):** para que NT8 tome la plantilla de Globex 24h
-  de una y no haya que cambiarla a mano en el Strategy Analyzer. Nuevo Input `SessionTemplateName`
-  (default `"CME US Index Futures ETH"`); en `State.Configure` el `AddDataSeries` del 15m usa la
-  sobrecarga con `tradingHoursName`. Así la serie 15m **siempre** trae barras overnight → el fallback
-  del rango pre-apertura (`OnBarUpdate`, líneas ~272-298) arma aunque el 1m primario sea RTH. Soluciona
-  el 0-trades sin depender de la plantilla que elija el usuario. **Falta F5 para confirmar la sobrecarga
-  en NT8 8.1.7.1** (si la firma difiere → external-change).
+- **Intento de fijar sesión ETH en código → REVERTIDO (CS1503).** Probé un Input `SessionTemplateName`
+  + `AddDataSeries(null, BarsPeriodType.Minute, 15, MarketDataType.Last, ...)` para que la serie 15m
+  trajera overnight sin tocar la plantilla del Analyzer. **No compila en NT8 8.1.7.1:** la sobrecarga
+  con `tradingHoursName` espera un objeto **`BarsPeriod`** (no `BarsPeriodType,int`) + un `bool?` final
+  (CS1503 args 2/4/5, línea 223). Revertido a `AddDataSeries(BarsPeriodType.Minute, 15)`. **Para tener
+  overnight: seleccionar la plantilla `CME US Index Futures ETH` en el Strategy Analyzer.** Si se quiere
+  re-introducir el pin, usar `AddDataSeries(null, new BarsPeriod{...}, "CME US Index Futures ETH")` y
+  validar con F5 (tag external-change).
 - **KillZoneEnd se queda en 1100** (09:30–11:00 ET, decisión operador sesión 11). *(En este turno
   primero lo cambié a 1400 por malinterpretar "como lo dejó Sergio"; el operador corrigió: es 1100.)*
+- **Decisión operador: el backtest/run en NT8 queda en manos de Sergio** (ya corre el código y mete
+  trades). Stream A (Esteban) sigue con herramienta/análisis/docs que no dependen de NT8.
+- **Hook de sync NT8 montado** (local, `bmo-nt8-sync`): `.claude/hooks/sync-nt8.ps1` + `PostToolUse`
+  en `settings.local.json` (gitignored) → al editar un `.cs` del repo se copia a `bin\Custom`. Probado.
 - **A13 — herramienta lista (código):** extendido `backtest/analyze_backtest.py` para separar trades
   por **nombre de señal de entrada** (`Entry name` del export NT8): `LongFVG/ShortFVG` → **Setup A**,
   `LongSweep/ShortSweep` → **Setup B**. Nuevo bloque "Desglose por setup" al final del reporte

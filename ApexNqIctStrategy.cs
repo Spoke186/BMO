@@ -104,10 +104,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Habilitar Setup B (sweep directo sin FVG)", Order = 18, GroupName = "2. Estrategia")]
 		public bool EnableSetupB { get; set; }
-
-		[NinjaScriptProperty]
-		[Display(Name = "Plantilla sesion serie 15m (datos overnight)", Order = 19, GroupName = "3. Horario")]
-		public string SessionTemplateName { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -200,7 +196,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 				SweepChochMaxBars15m = 4;     // barras 15m para ver CHoCH despues de la barrida
 				StopBufferTicks      = 2;
 				EnableSetupB         = true;
-				SessionTemplateName  = "CME US Index Futures ETH";  // Globex 24h: trae datos overnight para el rango pre-apertura
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia)
 				KillZoneEnd          = 1100;  // 11:00 ET = Colombia 10:00 (EDT). En EST (invierno): 1000.
 				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas; posicion abierta corre a TP/SL
@@ -213,16 +208,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				// Serie primaria = 1m (gatillo de entrada en confirmacion).
 				// Serie secundaria = 15m (sesgo, barrida, CHoCH, FVG).
-				// Fijamos la plantilla ETH (Globex 24h) en el codigo: el rango
-				// pre-apertura necesita barras nocturnas. Asi NT8 NO depende de la
-				// plantilla que elija el usuario en el Strategy Analyzer; aunque el
-				// 1m primario sea RTH, el fallback de OnBarUpdate reconstruye el rango
-				// desde esta serie 15m con datos overnight. instrumentName=null =>
-				// instrumento primario.
-				if (!string.IsNullOrWhiteSpace(SessionTemplateName))
-					AddDataSeries(null, BarsPeriodType.Minute, 15, MarketDataType.Last, SessionTemplateName);
-				else
-					AddDataSeries(BarsPeriodType.Minute, 15);
+				// NOTA: el rango pre-apertura necesita datos overnight; seleccionar
+				// la plantilla "CME US Index Futures ETH" (Globex 24h) en el Strategy
+				// Analyzer / grafico. Fijarlo aqui requiere la sobrecarga con BarsPeriod
+				// + tradingHoursName (CS1503 con la firma BarsPeriodType,int); pendiente
+				// validar en NT8 8.1.7.1 antes de reintroducirlo.
+				AddDataSeries(BarsPeriodType.Minute, 15);
 			}
 			else if (State == State.DataLoaded)
 			{
