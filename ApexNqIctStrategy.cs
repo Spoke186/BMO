@@ -289,11 +289,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				// Serie primaria = 1m (gatillo de entrada en confirmacion).
 				// Serie secundaria = 15m (sesgo, barrida, CHoCH, FVG).
-				// NOTA: el rango pre-apertura necesita datos overnight; seleccionar
-				// la plantilla "CME US Index Futures ETH" (Globex 24h) en el Strategy
-				// Analyzer / grafico. Fijarlo aqui requiere la sobrecarga con BarsPeriod
-				// + tradingHoursName (CS1503 con la firma BarsPeriodType,int); pendiente
-				// validar en NT8 8.1.7.1 antes de reintroducirlo.
 				AddDataSeries(BarsPeriodType.Minute, 15);
 			}
 			else if (State == State.DataLoaded)

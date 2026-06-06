@@ -33,7 +33,7 @@
 | A1 Estrategia 15m/1m sweep+CHoCH+FVG (base, rewrite SECH) | ✅ código completo (G1–G4 + Notion) | — |
 | A2 **Fix compilación**: CS1501 `EnterLong/Short` + CS0234 `DailyPnlTracker` | ✅ PR #14 / #10 | A1 |
 | A3 Compilar en NT8 (F5) limpio | ✅ **confirmado** (Esteban, sesión 9: aparece en Strategy Analyzer = compiló limpio) | A2 |
-| A4 Ventana entrada | ✅ **`KillZoneEnd=1100`** (09:30–11:00 ET, kill zone NY). Operador volvió a 11:00 (sesión 6 fue 1400) | A3 |
+| A4 Ventana entrada | ✅ **`KillZoneEnd=1130`** (09:30–11:30 ET) — PR #28 de Sergio (más frecuencia); supersede el 1100 de sesión 11. Input → operador fija 1100 en runtime si quiere | A3 |
 | A5 Cierre **TOTAL** 14:00 ET (`.md` §11) | ❌ operador G3: **dejar correr a TP/SL** (no cerrar total) | A3 |
 | A6 Liquidez = **rango pre-apertura** (`.md` §4) | ✅ `preMarketHigh/Low` 1m hasta 9:30 ET (impl. SECH) | A3 |
 | A7 Backtest Strategy Analyzer (NQ `NQ ##-##` 1m + 15m, 3–6 meses, Globex/24h) | 🚧 corre OK (sesión 10: rango pre-ap arma con ETH). Setup A daba ~0 trades (rango overnight muy ancho); Setup B (A11) genera más. Falta exportar + `analyze_backtest.py` | A3 |
@@ -42,7 +42,7 @@
 | A10 Consistencia 50% integrada (`DailyPnlTracker`) | ✅ falta validar en Sim | C2 |
 | A11 **Setup B** (Opening Range Sweep: barrida 1m del rango pre-mercado → entrada directa SIN CHoCH/FVG ni filtro tendencia, flag `EnableSetupB` default ON) | ✅ PR #24 (Sergio) | A3 |
 | A12 Exponer estado de **Setup B** en `PublishState`/`/setup` (hoy solo muestra Setup A) | ⬜ **Sergio** | A11, B7 |
-| A13 Backtest comparativo **Setup A vs B** (win rate, PF, # trades) → decidir cuál(es) dejar | 🚧 **herramienta lista** (`analyze_backtest.py` separa por `Entry name`: FVG=A, Sweep=B → desglose A/B/combinado). Falta el export real de A7 | A7 |
+| A13 Backtest comparativo **Setup A vs B** (win rate, PF, # trades) → decidir cuál(es) dejar | ✅ **herramienta mergeada** (PR #26): `analyze_backtest.py` separa por `Entry name` (FVG=A, Sweep=B → desglose A/B/combinado). Nota: #28 añadió Setup C (Order Block); el split solo etiqueta A/B hoy. Falta el export real | A7 |
 
 ### Stream B — MCP & Bridge  (dueño: `/mcp`, `/ntaddon`)
 | Tarea | Estado | Depende de |
@@ -87,7 +87,7 @@
 | # | Gap | Archivo | Estado |
 |---|-----|---------|--------|
 | G1 | `EnterLong/Short(0, true, ...)` no compila (CS1501) | `ApexNqIctStrategy.cs` | ✅ PR #14 |
-| G2 | Ventana entrada — **`KillZoneEnd=1100`** (09:30–11:00 ET, decisión operador sesión 11; sesión 6 fue 1400). `.md` §3 dice hasta 14:00 → gana la decisión del operador | `ApexNqIctStrategy.cs` (`KillZoneEnd=1100`) | ✅ decisión operador |
+| G2 | Ventana entrada — **`KillZoneEnd=1130`** (09:30–11:30 ET, PR #28 de Sergio; supersede 1100 de sesión 11). `.md` §3 dice hasta 14:00 → gana la decisión del operador/Sergio | `ApexNqIctStrategy.cs` (`KillZoneEnd=1130`) | ✅ decisión operador |
 | G3 | ForcedExit solo bloquea entradas; posición abierta corre a TP/SL (**intencional** — operador: "dejar que termine, 1 oportunidad/día"). NO cierra total pese a `.md` §11 | `ApexNqIctStrategy.cs` (`ForcedExit`) | ✅ decisión operador |
 | G4 | Liquidez = rango pre-apertura 1m hasta 9:30 ET (`.md` §4) | `ApexNqIctStrategy.cs` (`preMarketHigh/Low`) | ✅ resuelto (impl. SECH) |
 

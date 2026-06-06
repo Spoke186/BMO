@@ -24,8 +24,8 @@ personas, cada una con un Claude Code en su PC. Repo: **https://github.com/Spoke
 | Entrada | **Setup A (FVG):** sweep rango pre-apertura → CHoCH+displacement (≥1.5×ATR) → FVG 15m → retroceso + confirmación 1m → mercado. **Setup B (`EnableSetupB`, default ON):** barrida del máx/mín pre-mercado en 1m → entrada directa SIN CHoCH/FVG ni filtro de tendencia (más trades) |
 | Stop | **USD fijo $250** (`CalculationMode.Currency`). El extremo del sweep solo invalida el límite pendiente |
 | Take profit | **USD fijo $700** (~1:2.8), ambas direcciones |
-| Ventana | **Entrada 09:30–11:00 ET** (08:30–10:00 Col) — `KillZoneEnd=1100` (revisado sesión 11; sesión 6 fue 1400). `ForcedExit` 14:00 bloquea entradas tardías; posición abierta **corre a TP/SL** (G3, NO cierre total); NT8 aplana al cierre de sesión. **1 setup/día** |
-| Sesión datos | **Serie 15m fijada a `CME US Index Futures ETH`** (Globex 24h) por código (`SessionTemplateName`, Input, sesión 12) → el rango pre-apertura siempre tiene datos overnight sin depender de la plantilla del Strategy Analyzer |
+| Ventana | **Entrada 09:30–11:30 ET** (08:30–10:30 Col) — `KillZoneEnd=1130` (PR #28 de Sergio, sesión 12: "más ventana = más frecuencia"; supersede el 1100 de sesión 11). Es Input → operador puede fijar 1100 en runtime. `ForcedExit` 14:00 bloquea entradas tardías; posición abierta **corre a TP/SL** (G3, NO cierre total); NT8 aplana al cierre de sesión |
+| Sesión datos | Requiere **datos overnight**: seleccionar plantilla **`CME US Index Futures ETH`** (Globex 24h) en el Strategy Analyzer/gráfico. Sin overnight, `preMarketReady` no arma → 0 setups. (Intento de fijarlo por código se revirtió, sesión 12: CS1503) |
 | Plan Apex | 50K · Trailing DD $2,500 · Profit goal $3,000 · Daily loss propio $400 |
 | Consistencia | 50% lun–vie (ningún día > 50% del profit acumulado). **No en código aún** (manual) |
 | MCP | **Node + TypeScript** · alcance **solo lectura + enable/disable** · corre en **localhost** |
@@ -81,10 +81,18 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
   overnight: seleccionar la plantilla `CME US Index Futures ETH` en el Strategy Analyzer.** Si se quiere
   re-introducir el pin, usar `AddDataSeries(null, new BarsPeriod{...}, "CME US Index Futures ETH")` y
   validar con F5 (tag external-change).
-- **KillZoneEnd se queda en 1100** (09:30–11:00 ET, decisión operador sesión 11). *(En este turno
-  primero lo cambié a 1400 por malinterpretar "como lo dejó Sergio"; el operador corrigió: es 1100.)*
+- **PR #28 de Sergio mergeado a `main`** (autorizado por el operador): estrategia nueva — **Setup A+B+C
+  funcionales** (C = Order Block 1m), niveles **PDH/PDL**, filtro de sesgo diario, 2º trade opcional si
+  el 1º ganó; meta ~8-11 trades/mes. + `docs/trading_knowledge_base.md`. Revisado antes de mergear:
+  **LOCKED intactos** (`Contratos=2`, `StopLossUsd=250`, `ProfitTargetUsd=700`, `CalculationMode.Currency`,
+  `ForcedExit=1400`, `TrailingDrawdown=2500`, `IsExitOnSessionCloseStrategy`), **sin secretos**.
+- **KillZoneEnd ahora = 1130** (lo trae #28, "más ventana = más frecuencia"; **supersede el 1100**).
+  El operador lo aceptó. Es Input → se puede fijar 1100 en runtime. *(Durante el turno yo lo había
+  tocado a 1400 por malinterpretar "como lo dejó Sergio" y luego a 1100; al final manda el #28 = 1130.)*
 - **Decisión operador: el backtest/run en NT8 queda en manos de Sergio** (ya corre el código y mete
   trades). Stream A (Esteban) sigue con herramienta/análisis/docs que no dependen de NT8.
+- **PR #26 (mío) refrescado y mergeado:** solo el **tool A13** (`backtest/`) + docs; quité mi cambio al
+  `.cs` para no tocar la estrategia de Sergio. PR #27 (Alan) queda intacto (decisión operador).
 - **Hook de sync NT8 montado** (local, `bmo-nt8-sync`): `.claude/hooks/sync-nt8.ps1` + `PostToolUse`
   en `settings.local.json` (gitignored) → al editar un `.cs` del repo se copia a `bin\Custom`. Probado.
 - **A13 — herramienta lista (código):** extendido `backtest/analyze_backtest.py` para separar trades
