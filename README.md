@@ -3,7 +3,7 @@
 Estrategia automatizada NinjaScript para NinjaTrader 8 bajo reglas **Apex Trader Funding**.
 Lógica ICT: en tendencia, esperar **barrida de liquidez** contra-tendencia → **desplazamiento**
 (proxy ATR) → **FVG** → entrada por límite en el **fill completo** del gap, a favor de la
-tendencia principal. RR fijo 1:3.
+tendencia principal. **Bracket fijo en USD: stop $250 / target $700**, ambas direcciones, 2 contratos.
 
 ---
 
@@ -26,8 +26,9 @@ tendencia principal. RR fijo 1:3.
 
 | Grupo | Param | Default | Nota |
 |-------|-------|---------|------|
-| Tamaño | Contratos | 1 | 1 MNQ recomendado para 50K |
-| Estrategia | RR objetivo | 3.0 | TP = 3× stop |
+| Tamaño | Contratos | 2 | bracket USD implica **NQ mini** (ver abajo) |
+| Estrategia | Stop loss fijo (USD) | 250 | `CalculationMode.Currency`, pérdida total de la posición |
+| Estrategia | Target fijo (USD) | 700 | ganancia total objetivo (~1:2.8) |
 | Estrategia | Pivote tendencia 15m | 3 | velas a cada lado (fractal) |
 | Estrategia | Pivote liquidez 5m | 2 | detecta swing highs/lows barridos |
 | Estrategia | Displacement ATR mult | 1.5 | cuerpo ≥ 1.5×ATR(14) = "institucional" |
@@ -39,7 +40,6 @@ tendencia principal. RR fijo 1:3.
 | Riesgo | Balance inicial | 50000 | para proxy trailing DD |
 | Riesgo | Trailing drawdown | 2500 | Apex 50K |
 | Riesgo | Max daily loss | 400 | tu límite propio |
-| Riesgo | Max riesgo por trade | 250 | salta el setup si el stop estructural pasa este USD |
 
 **Horario:** NinjaTrader usa la zona del bróker/PC. Si tu gráfico ya está en ET, los valores
 `830/1100/1555` van directos. Si tu PC está en hora Colombia, **es la misma hora** (UTC-5 todo
@@ -48,14 +48,18 @@ Futures ETH` y que el reloj del gráfico sea ET. Si difiere, ajusta los `HHmm`.
 
 ---
 
-## Contrato: MNQ vs NQ (importante)
+## Contrato: el bracket USD fija NQ mini (importante)
 
 - **NQ** (mini): 1 pt = $20, 1 tick (0.25) = $5.
 - **MNQ** (micro): 1 pt = $2, 1 tick = $0.50.
 
-Con 50K (trailing DD $2,500, daily loss $400) un stop ICT típico de 15–30 pts en **NQ** = $300–600
-= quema el día en una operación. En **MNQ** = $30–60. **Empieza con 1 MNQ.** Sube a NQ solo con
-colchón de DD y consistencia probada.
+Decisión del operador: **2 contratos, stop $250 / target $700 fijos** (`CalculationMode.Currency`).
+Esos dólares implican **NQ mini**:
+- **2 NQ** → $40/pt → stop ≈ **6.25 pts**, target ≈ **17.5 pts**. Razonable en kill zone.
+- **2 MNQ** → $4/pt → stop ≈ 62.5 pts, target ≈ 175 pts. **Irreal** para el bracket. No usar MNQ con estos USD.
+
+Riesgo vs Apex 50K: un stop = **−$250** (< daily loss $400) y queda lejos del trailing DD $2,500.
+⚠️ 2 NQ es tamaño real; valida en Sim/Evaluación antes de fondeada.
 
 ---
 

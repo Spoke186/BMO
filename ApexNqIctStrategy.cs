@@ -28,9 +28,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 		public int Contratos { get; set; }
 
 		[NinjaScriptProperty]
-		[Display(Name = "RR objetivo (TP = RR x stop)", Order = 2, GroupName = "2. Estrategia")]
-		[Range(0.5, 10)]
-		public double RewardRisk { get; set; }
+		[Display(Name = "Stop loss fijo (USD)", Order = 2, GroupName = "2. Estrategia")]
+		[Range(1, 100000)]
+		public double StopLossUsd { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Target fijo (USD)", Order = 3, GroupName = "2. Estrategia")]
+		[Range(1, 100000)]
+		public double ProfitTargetUsd { get; set; }
 
 		[NinjaScriptProperty]
 		[Display(Name = "Pivote tendencia 15m (velas a cada lado)", Order = 3, GroupName = "2. Estrategia")]
@@ -86,9 +91,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[Display(Name = "Max daily loss propio (USD)", Order = 14, GroupName = "4. Riesgo Apex")]
 		public double MaxDailyLoss { get; set; }
 
-		[NinjaScriptProperty]
-		[Display(Name = "Max riesgo por trade (USD)", Order = 15, GroupName = "4. Riesgo Apex")]
-		public double MaxRiskPerTrade { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -107,8 +109,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private int setupState;
 		private int   setupDir;        // 1 long, -1 short
 		private double fvgEntryPrice;  // borde lejano del FVG (fill completo)
-		private double fvgStopPrice;   // detras del extremo del sweep
-		private double fvgInvalidPrice;// si se cruza antes del fill, anular setup
+		private double fvgInvalidPrice;// extremo del sweep: si se cruza antes del fill, anular setup
 		private int   fvgArmedBar;     // CurrentBar (5m) cuando se armo
 		private Order entryOrder;
 
@@ -133,8 +134,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 				BarsRequiredToTrade  = 20;
 				IncludeCommission    = true;
 
-				Contratos           = 1;
-				RewardRisk          = 3.0;
+				Contratos           = 2;
+				StopLossUsd         = 250;
+				ProfitTargetUsd     = 700;
 				SwingStrength15m    = 3;
 				SwingStrength5m     = 2;
 				DisplacementAtrMult = 1.5;
@@ -147,7 +149,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 				StartingBalance     = 50000;
 				TrailingDrawdown    = 2500;
 				MaxDailyLoss        = 400;
-				MaxRiskPerTrade     = 250;
 			}
 			else if (State == State.Configure)
 			{
@@ -313,24 +314,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 			}
 		}
 
-		private void ArmSetup(int dir, double entry, double stop)
+		private void ArmSetup(int dir, double entry, double structuralStop)
 		{
-			double risk = Math.Abs(entry - stop);
-			if (risk <= 0) return;
-
-			// Cap de riesgo en USD: si el stop estructural queda muy lejos, saltar.
-			// Protege el max daily loss cuando el sweep deja un stop ancho.
-			double riskUsd = risk * Instrument.MasterInstrument.PointValue * Contratos;
-			if (riskUsd > MaxRiskPerTrade)
-			{
-				Print($"[RIESGO] Setup saltado: riesgo {riskUsd:C} > max {MaxRiskPerTrade:C} (stop {risk} pts).");
-				return;
-			}
-
+			// El stop estructural ya NO define el bracket (ahora es USD fijo). Solo sirve
+			// como nivel de invalidacion: si la estructura del sweep se rompe antes de que
+			// el limite llene, se cancela el setup.
 			setupDir        = dir;
 			fvgEntryPrice   = Instrument.MasterInstrument.RoundToTickSize(entry);
-			fvgStopPrice    = Instrument.MasterInstrument.RoundToTickSize(stop);
-			fvgInvalidPrice = fvgStopPrice; // si toca el stop antes del fill, anular
+			fvgInvalidPrice = Instrument.MasterInstrument.RoundToTickSize(structuralStop);
 			fvgArmedBar     = CurrentBar;
 			setupState      = 1;
 
@@ -339,17 +330,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private void PlaceEntryLimit()
 		{
-			double risk   = Math.Abs(fvgEntryPrice - fvgStopPrice);
-			double target = setupDir == 1
-				? fvgEntryPrice + RewardRisk * risk
-				: fvgEntryPrice - RewardRisk * risk;
-			target = Instrument.MasterInstrument.RoundToTickSize(target);
-
 			string sig = setupDir == 1 ? "LongFVG" : "ShortFVG";
 
-			// Stop OBLIGATORIO y target adjuntos por precio (regla Apex: nunca sin stop).
-			SetStopLoss(sig, CalculationMode.Price, fvgStopPrice, false);
-			SetProfitTarget(sig, CalculationMode.Price, target);
+			// Bracket en USD FIJO (regla operador): stop $250, target $700, ambas direcciones.
+			// CalculationMode.Currency => los puntos se ajustan solos al instrumento y a Contratos.
+			// OJO: estos USD asumen NQ mini. En MNQ pedirian un recorrido irreal.
+			SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
+			SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
 
 			if (setupDir == 1)
 				entryOrder = EnterLongLimit(0, true, Contratos, fvgEntryPrice, sig);

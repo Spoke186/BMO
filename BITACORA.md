@@ -18,22 +18,23 @@ personas, cada una con un Claude Code en su PC. Repo: **https://github.com/Spoke
 | Tema | Decisión |
 |------|----------|
 | Plataforma | **NinjaTrader 8 / NinjaScript (C#)**. Descartado: Python+API, TradingView+PickMyTrade |
-| Mercado / contrato | NQ o **MNQ**. **Recomendado empezar 1 MNQ** (micro) por riesgo en 50K |
+| Mercado / contrato | **2 contratos NQ mini** (el bracket USD fijo lo implica; MNQ no sirve con esos USD) |
 | Timeframes | Tendencia 15m · ejecución 5m |
 | Tendencia (sesgo) | Estructura **HH/HL** por pivotes fractales (fuerza 3 en 15m) |
 | Entrada | Sweep contra-tendencia → displacement (proxy ATR ≥1.5×) → **FVG** → límite en **fill completo** del gap, a favor de tendencia |
-| Stop | Detrás del extremo del sweep + 2 ticks |
-| Take profit | **1:3 RR** fijo |
+| Stop | **USD fijo $250** (`CalculationMode.Currency`). El extremo del sweep solo invalida el límite pendiente |
+| Take profit | **USD fijo $700** (~1:2.8), ambas direcciones |
 | Ventana | **NY Kill Zone 8:30–11:00 ET**, cierre forzado 15:55 ET, **1 setup/día** |
-| Plan Apex | 50K · Trailing DD $2,500 · Profit goal $3,000 · Daily loss propio $400 · Cap riesgo/trade $250 |
+| Plan Apex | 50K · Trailing DD $2,500 · Profit goal $3,000 · Daily loss propio $400 |
 | Consistencia | 50% lun–vie (ningún día > 50% del profit acumulado). **No en código aún** (manual) |
 | MCP | **Node + TypeScript** · alcance **solo lectura + enable/disable** · corre en **localhost** |
 | AddOn | C# dentro de NT8, HTTP en `127.0.0.1:8731`, auth por token, toggle `ApexBridgeState` |
 
-### Nota de riesgo (corrección del operador)
-NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop ~12.5 pts = **$250**
-(< daily loss $400); si gana 1:3 ≈ **$700–750**. Por eso se añadió `MaxRiskPerTrade` ($250): el bot
-**salta el setup** si el stop estructural implica más USD que ese tope.
+### Nota de riesgo (operador)
+Bracket FIJO en USD por decisión del operador: **stop $250, target $700, 2 NQ**. Con 1 trade/día,
+un stop = −$250 (< daily loss $400) y lejos del trailing DD $2,500. La entrada sigue esperando
+sweep/FVG; el stop ya NO es estructural (antes "detrás del sweep" + cap `MaxRiskPerTrade`, ambos
+removidos). El extremo del sweep ahora solo cancela el límite si la estructura se rompe antes del fill.
 
 ---
 
@@ -75,6 +76,10 @@ NQ mini NO "se quema en un trade" si el stop se controla: con 1 trade/día, stop
 - Invitados y **aceptados** los 2 colaboradores: 2317SECH, ptala611-oss (write).
 - **Asignación de streams:** Spoke186 → A (estrategia, tiene NT8), 2317SECH → B (MCP/bridge),
   ptala611-oss → C (infra/riesgo/alertas). Detalle + primeras acciones en `PLAN.md`.
+- Ambos colaboradores ya **clonaron** el repo.
+- **Cambio de estrategia (operador):** Contratos **1→2**; stop/target pasan de estructural+1:3 a
+  **USD fijo $250 / $700** (`CalculationMode.Currency`), ambas direcciones; removidos `RewardRisk` y
+  `MaxRiskPerTrade`. Implica **NQ mini** (no MNQ). Editado `ApexNqIctStrategy.cs` + README.
 
 ---
 
