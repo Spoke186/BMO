@@ -51,8 +51,8 @@
 - [ ] Comprar **Apex 50K** (N1).
 - [ ] Pasar al equipo: versión NT8 (N2), conexión Rithmic/Tradovate (N3), PC-LIVE (N6), visibilidad repo (N9).
 - [ ] Poner `ApexNqIctStrategy.cs` **y** `ntaddon/ApexBridgeAddOn.cs` en `bin\Custom\`, **compilar** (A2).
-- [ ] Gráfico **NQ 5m** + aplicar la estrategia. Verificar params (2 contratos, $250/$700, kill zone).
-- [ ] Backtest Strategy Analyzer 3–6 meses NQ 5m (A3).
+- [ ] Gráfico **NQ 1m** (sesión Globex/24h) + aplicar la estrategia. Verificar params (2 contratos, $250/$700, kill zone 930–1400).
+- [ ] Backtest Strategy Analyzer 3–6 meses NQ 1m, datos Globex/24h (A3).
 - DoD: compila sin errores + 1 backtest con métricas (win rate, profit factor, max DD) en el chat/repo.
 
 **2317SECH (Stream B — MCP) — arranca YA, sin Apex**
@@ -81,7 +81,7 @@
 - [x] Estrategia base ICT (sweep → displacement → FVG → fill completo, 1:3, kill zone).
 - [x] Guardas riesgo: stop obligatorio, no DCA, daily loss, cap riesgo/trade, proxy trailing DD.
 - [ ] Compilar en NT8 (F5), corregir errores de compilación.
-- [ ] Backtest Strategy Analyzer (3–6 meses NQ 5m).
+- [ ] Backtest Strategy Analyzer (3–6 meses NQ 1m, Globex/24h).
 - [ ] Tuning: displacement mult, FVG mínimo, pivotes → que ≈ ojo humano.
 - [ ] Persistencia P&L entre días → **regla consistencia 50% lun-vie** real (coordinar con C).
 - [ ] Fase 2: TP "siguiente liquidez".

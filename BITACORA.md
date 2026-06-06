@@ -44,7 +44,7 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 |---------|--------|--------|
 | `ApexNqIctStrategy.cs` | A | Estrategia ICT completa + guardas Apex + toggle MCP. ✅ revisado (compila); 🚧 falta F5/backtest en NT8 |
 | `backtest/analyze_backtest.py` (+ test + README) | A | Analizador de backtest stdlib: PF, max DD, Sharpe, OOS, Monte Carlo, reglas Apex + consistencia 50%. ✅ 8 tests OK |
-| `backtest/PREFLIGHT.md` | A | Checklist F5 + Strategy Analyzer + gotchas (timezone ET, primario 5m, stop tight) |
+| `backtest/PREFLIGHT.md` | A | Checklist F5 + Strategy Analyzer + gotchas (timezone ET, primario 1m, datos overnight, stop tight) |
 | `ntaddon/ApexBridgeAddOn.cs` | B | AddOn HTTP (account/position/trades/enable/disable). 🚧 sin compilar/probar |
 | `mcp/` (+ `dist/index.js`) | B | MCP server Node TS, **6 tools** (+`check_market`). ✅ build limpio |
 | `.mcp.json` + `.env.example` | B | Registro MCP + plantilla env |
@@ -333,7 +333,7 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 - [x] Review compile de `.cs` (verdict: compila). Ver `backtest/PREFLIGHT.md`.
 - [x] Analizador de backtest `backtest/analyze_backtest.py` (+ tests).
 - [x] Compilar `.cs` en NT8 (F5) — ✅ **sesión 9: compila limpio** (aparece en Strategy Analyzer en el PC de Esteban).
-- [ ] Backtest Strategy Analyzer (3–6 meses NQ 5m) → correr `analyze_backtest.py` sobre el export.
+- [ ] Backtest Strategy Analyzer (3–6 meses NQ 1m, datos Globex/24h) → correr `analyze_backtest.py` sobre el export.
 - [ ] Tuning displacement/FVG/pivotes (A4).
 - [x] **Integrar `infra/DailyPnlTracker.cs` en la estrategia** → consistencia 50% en tiempo real (A5).
       Falta validar en Sim que `RecordTrade`/`WouldViolateConsistency` disparan bien.

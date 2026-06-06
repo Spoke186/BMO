@@ -1,9 +1,10 @@
 # ApexNqIctStrategy — Bot ICT para NQ/MNQ (NinjaTrader 8)
 
 Estrategia automatizada NinjaScript para NinjaTrader 8 bajo reglas **Apex Trader Funding**.
-Lógica ICT: en tendencia, esperar **barrida de liquidez** contra-tendencia → **desplazamiento**
-(proxy ATR) → **FVG** → entrada por límite en el **fill completo** del gap, a favor de la
-tendencia principal. **Bracket fijo en USD: stop $250 / target $700**, ambas direcciones, 2 contratos.
+Lógica ICT (**15m** sesgo/FVG, **1m** gatillo): en tendencia, **barrida del rango pre-apertura**
+contra-tendencia → **CHoCH + desplazamiento** (cuerpo ≥1.5×ATR) en 15m → **FVG** en el impulso →
+retroceso al FVG + **confirmación en 1m** (rechazo o mini-CHoCH) → entrada a **mercado** al cierre 1m,
+a favor de la tendencia. **Bracket fijo en USD: stop $250 / target $700**, ambas direcciones, 2 contratos.
 
 ---
 
@@ -14,11 +15,12 @@ tendencia principal. **Bracket fijo en USD: stop $250 / target $700**, ambas dir
    Documents\NinjaTrader 8\bin\Custom\Strategies\
    ```
 2. En NinjaTrader: **New → NinjaScript Editor**, abrir el archivo, **Compile** (F5).
-3. Abrir un **gráfico de NQ (o MNQ) en 5 minutos**.
+3. Abrir un **gráfico de NQ (o MNQ) en 1 minuto**, con sesión **Globex/24h (ETH)** — requiere datos overnight.
 4. **Strategies** (clic derecho en gráfico → Strategies) → añadir `ApexNqIctStrategy`.
 5. Ajustar parámetros (abajo) → Enable.
 
-> La estrategia añade sola la serie de **15m** para el sesgo. Aplícala SIEMPRE sobre 5m.
+> La estrategia añade sola la serie de **15m** (sesgo/barrida/CHoCH/FVG). Aplícala SIEMPRE sobre la
+> primaria **1m**. ⚠️ Sin datos overnight (gráfico RTH-only) el rango pre-apertura no se arma → **cero setups**.
 
 ---
 
@@ -30,13 +32,15 @@ tendencia principal. **Bracket fijo en USD: stop $250 / target $700**, ambas dir
 | Estrategia | Stop loss fijo (USD) | 250 | `CalculationMode.Currency`, pérdida total de la posición |
 | Estrategia | Target fijo (USD) | 700 | ganancia total objetivo (~1:2.8) |
 | Estrategia | Pivote tendencia 15m | 3 | velas a cada lado (fractal) |
-| Estrategia | Pivote liquidez 5m | 2 | detecta swing highs/lows barridos |
+| Estrategia | Pivote mini-CHoCH 1m | 2 | velas a cada lado, para la confirmación 1m |
 | Estrategia | Displacement ATR mult | 1.5 | cuerpo ≥ 1.5×ATR(14) = "institucional" |
-| Estrategia | FVG mínimo (pts) | 3.0 | filtra gaps de ruido |
-| Estrategia | Buffer stop (ticks) | 2 | detrás del extremo del sweep |
-| Estrategia | Velas máx retroceso FVG | 12 | expira el límite si no llena |
-| Horario | Kill zone inicio/fin | 830 / 1100 | ET (NY open) |
-| Horario | Cierre forzado | 1555 | ET, aplana antes del cierre |
+| Estrategia | FVG mínimo (pts) | 6.0 | filtra gaps de ruido (velas 15m) |
+| Estrategia | Rechazo 1m (mecha/cuerpo) | 1.5 | ratio de la vela de confirmación 1m |
+| Estrategia | Máx barras 1m retroceso FVG | 60 | expira el setup si el precio no vuelve (~1h) |
+| Estrategia | Máx barras 15m CHoCH tras barrida | 4 | ventana para ver el CHoCH |
+| Estrategia | Buffer invalidación sweep (ticks) | 2 | cancela el setup si se rompe el extremo |
+| Horario | Kill zone inicio/fin | 930 / 1400 | ET (ventana de ejecución `.md` §3) |
+| Horario | Cierre forzado | 1400 | ET — deja de ABRIR; posición abierta corre a TP/SL (G3) |
 | Riesgo | Balance inicial | 50000 | para proxy trailing DD |
 | Riesgo | Trailing drawdown | 2500 | Apex 50K |
 | Riesgo | Max daily loss | 400 | tu límite propio |
@@ -72,8 +76,8 @@ Riesgo vs Apex 50K: un stop = **−$250** (< daily loss $400) y queda lejos del 
 | Ventana horaria | ✅ Kill zone + cierre forzado |
 | Max daily loss | ✅ Sobre P&L realizado de la sesión |
 | Trailing drawdown | ⚠️ **Aproximación** (high-water local). Apex lo calcula en su server con su métrica de equity intradía. Úsalo como red de seguridad, NO como verdad. |
-| Consistencia 50% | ❌ **No implementada en código.** Necesita P&L acumulado entre días (persistencia). Vigílala manual: ningún día > 50% de tu profit acumulado. |
-| No HFT | ✅ Por diseño (1 trade/día, OnBarClose 5m) |
+| Consistencia 50% | ⚠️ **Implementada en tiempo real** (`infra/DailyPnlTracker.cs`, persiste JSON): salta el setup si ganarlo violaría la regla. Solo activa en Sim/live; en backtest se valida con `analyze_backtest.py`. Apex sigue siendo la verdad oficial. |
+| No HFT | ✅ Por diseño (1 trade/día, `OnBarClose`, gatillo 1m) |
 
 ---
 
@@ -81,7 +85,7 @@ Riesgo vs Apex 50K: un stop = **−$250** (< daily loss $400) y queda lejos del 
 
 - **ICT es discrecional; esto es una aproximación.** "Desplazamiento institucional" = proxy ATR.
   El backtest se parecerá a tu ojo pero NO será idéntico. Espera divergencia.
-- **Sweep + FVG simplificados:** sweep = perforar el último swing de 5m y recuperar; FVG = gap de
+- **Sweep + FVG simplificados:** sweep = perforar el **rango pre-apertura** (high/low hasta 9:30 ET) y recuperar; FVG = gap de
   3 velas estándar. No modela order blocks, breaker blocks ni multi-timeframe profundo.
 - **TP fijo 1:3**, no "siguiente zona de liquidez" (eso es fase 2).
 - **Consistencia 50% y trailing DD reales** los gobierna Apex, no este código.
@@ -90,11 +94,11 @@ Riesgo vs Apex 50K: un stop = **−$250** (< daily loss $400) y queda lejos del 
 
 ## Flujo de validación (NO saltarse)
 
-1. **Backtest** (Strategy Analyzer) sobre 3–6 meses de NQ 5m. Revisar win rate, RR real, max DD.
+1. **Backtest** (Strategy Analyzer) sobre 3–6 meses de NQ **1m** (sesión Globex/24h). Revisar win rate, RR real, max DD.
 2. **Tunear** displacement mult, FVG mínimo, pivotes hasta que el comportamiento ≈ tu manual.
 3. **Sim / Playback** en cuenta demo, varias sesiones en vivo simuladas.
 4. **Cuenta de EVALUACIÓN Apex** — nunca la fondeada primero.
-5. Solo tras evaluación estable → cuenta fondeada, 1 MNQ.
+5. Solo tras evaluación estable → cuenta fondeada (2 NQ, el tamaño LOCKED).
 
 > ⚠️ **Nunca correr esto por primera vez en cuenta fondeada.**
 
