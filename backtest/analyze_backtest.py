@@ -43,7 +43,14 @@ from datetime import datetime
 # Parsing tolerante
 # --------------------------------------------------------------------------- #
 def parse_money(raw: str) -> float:
-    """'$1,234.56' / '(123.45)' / '-123' -> float. Parentesis = negativo."""
+    """'$1,234.56' (US) / '$ 1.150,00' (CO) / '(123.45)' / '-123' -> float.
+
+    Parentesis = negativo. Auto-detecta el separador decimal: si hay coma Y
+    punto, decimal = el que aparece de ultimo (US '1,150.00' vs CO '1.150,00').
+    Si solo hay coma y deja 1-2 digitos al final, es decimal ('250,00'); si no,
+    es separador de miles. Necesario porque el export NT8 en PC en locale
+    colombiano saca coma decimal y rompia el parser US-only.
+    """
     if raw is None:
         raise ValueError("celda vacia")
     s = str(raw).strip()
@@ -52,7 +59,18 @@ def parse_money(raw: str) -> float:
     neg = s.startswith("(") and s.endswith(")")
     if neg:
         s = s[1:-1]
-    s = s.replace("$", "").replace(" ", "").replace(",", "")
+    s = s.replace("$", "").replace(" ", "")
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):       # CO: 1.150,00 -> 1150.00
+            s = s.replace(".", "").replace(",", ".")
+        else:                                  # US: 1,150.00 -> 1150.00
+            s = s.replace(",", "")
+    elif "," in s:
+        frac = s.rsplit(",", 1)[1]
+        if len(frac) in (1, 2) and frac.isdigit():  # 250,00 / 25272,2 = decimal
+            s = s.replace(",", ".")
+        else:                                        # 1,150 = miles
+            s = s.replace(",", "")
     val = float(s)
     return -val if neg else val
 
@@ -61,6 +79,9 @@ _DT_FORMATS = (
     "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %I:%M %p",
     "%m/%d/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
     "%d/%m/%Y %H:%M:%S", "%m/%d/%Y", "%Y-%m-%d",
+    # ano de 2 digitos: la grilla NT8 trunca la fecha ('5/03/20' = 5-mar).
+    # d/m antes que m/d porque ese es el orden del export local.
+    "%d/%m/%y", "%m/%d/%y",
 )
 
 
@@ -86,9 +107,9 @@ def classify_setup(name):
     if not name:
         return None
     n = str(name).lower()
-    if "fvg" in n:
+    if "fvg" in n or "fv" in n:      # FVG (incl. truncado grilla 'ShortFV')
         return "A"
-    if "sweep" in n:
+    if "sweep" in n or "sw" in n:    # Sweep (incl. truncado grilla 'LongSw')
         return "B"
     return None
 
@@ -128,10 +149,13 @@ def load_trades(path, profit_col=None, exit_col=None, entry_col=None,
 
         pcol = profit_col or _match_col(headers, want="profit", avoid=("cum", "%"))
         xcol = exit_col or _match_col(headers, want="exit time") \
-            or _match_col(headers, want="exit")
+            or _match_col(headers, want="exit tim") \
+            or _match_col(headers, want="exit", avoid=("nam", "pric"))
         ecol = entry_col or _match_col(headers, want="entry time") \
-            or _match_col(headers, want="entry")
+            or _match_col(headers, want="entry tim") \
+            or _match_col(headers, want="entry", avoid=("nam", "pric"))
         ncol = name_col or _match_col(headers, want="entry name") \
+            or _match_col(headers, want="entry na") \
             or _match_col(headers, want="name", avoid=("exit",))
         if not pcol:
             raise SystemExit(

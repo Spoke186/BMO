@@ -21,7 +21,7 @@ personas, cada una con un Claude Code en su PC. Repo: **https://github.com/Spoke
 | Mercado / contrato | **2 contratos NQ mini** (el bracket USD fijo lo implica; MNQ no sirve con esos USD) |
 | Timeframes | **Sesgo/barrida/CHoCH/FVG 15m · gatillo (confirmación) 1m**. Serie primaria = **1m**; 15m por `AddDataSeries` |
 | Tendencia (sesgo) | Estructura **HH/HL** por pivotes fractales (fuerza 3 en 15m) |
-| Entrada | **Setup A (FVG):** sweep rango pre-apertura → CHoCH+displacement (≥1.5×ATR) → FVG 15m → retroceso + confirmación 1m → mercado. **Setup B (`EnableSetupB`, default ON):** barrida del máx/mín pre-mercado en 1m → entrada directa SIN CHoCH/FVG ni filtro de tendencia (más trades) |
+| Entrada | **FLUJO ÚNICO = Setup A (FVG)** (sesión 14): sweep rango pre-apertura → CHoCH+displacement (≥1.5×ATR) → FVG 15m → retroceso + confirmación 1m → mercado. **Setup B (`EnableSetupB`) y C: APAGADOS por default** (sesión 14, código intacto/reactivable). B era: barrida 1m del máx/mín pre-mercado → entrada directa SIN CHoCH/FVG |
 | Stop | **USD fijo $250** (`CalculationMode.Currency`). El extremo del sweep solo invalida el límite pendiente |
 | Take profit | **USD fijo $700** (~1:2.8), ambas direcciones |
 | Ventana | **Entrada 09:30–11:30 ET** (08:30–10:30 Col) — `KillZoneEnd=1130` (PR #28 de Sergio, sesión 12: "más ventana = más frecuencia"; supersede el 1100 de sesión 11). Es Input → operador puede fijar 1100 en runtime. `ForcedExit` 14:00 bloquea entradas tardías; posición abierta **corre a TP/SL** (G3, NO cierre total); NT8 aplana al cierre de sesión |
@@ -68,6 +68,55 @@ removidos). El extremo del sweep ahora solo cancela el límite si la estructura 
 ---
 
 ## 3. Cronología
+
+### 2026-06-07 — Sesión 14 (Claude Stream A en PC de Esteban / Spoke186)
+
+**Tema: CIERRE del proyecto a FLUJO ÚNICO = Setup A (FVG). Se apaga B y C. Se cierra el reto A vs B.**
+
+- **Decisión del operador (Esteban):** el proyecto se consolida en **un solo setup, el A (FVG)**, el
+  de mayor calidad (confluencia 15m). **Se cierra el "reto Setup A vs B"** (§F de TAREAS) y la operación
+  conectada A+B. De aquí en adelante el bot opera **solo con A**; se testea y se itera sobre A.
+- **Cambio de código (`ApexNqIctStrategy.cs`, línea ~272):** `EnableSetupB` default **`true → false`**.
+  `EnableSetupC` ya estaba en `false`. **NO se borró código de B ni C** — siguen intactos y reactivables
+  poniendo su Input en `true` (decisión: apagar por flag, reversible, sin romper el trabajo de Sergio).
+  **Params/constantes de A intactos** (orden del operador: cerrar con lo que tenemos, tunear después).
+  Copiado a `bin\Custom\Strategies` de NT8 (falta **F5** para recompilar).
+- **🔔 AVISO AL EQUIPO (Sergio):** esto **apaga su Setup B** (el que hoy produce $3.150/mes). Su código
+  queda dormido, no borrado. Cualquier cambio de **lógica** del `.cs` para aflojar A se coordina con él
+  (él es dueño de la estrategia); los **Inputs/params** de A los tunea Esteban.
+- **Diagnóstico que motivó la decisión (sesión 14, análisis del CSV `trades_setupA.csv`):**
+  - El export real (14 trades, marzo 2026) son **100% Setup B (Sweep)**; **Setup A disparó 0**. El archivo
+    estaba mal nombrado "setupA". Net $3.150, 50% WR, PF 2.80, consistencia 50% pasa (mejor día 44%).
+  - **Por qué A=0:** (1) **B pre-emptía a A** — comparten `tradedToday`, B corre en 1m con condiciones
+    laxas sobre la MISMA liquidez (barrida pre-mercado) y se lleva el trade del día antes de que A arme
+    en 15m; (2) la cadena de A es conjuntiva — sweep 15m → CHoCH+displacement+FVG **en una misma barra
+    15m** (`ApexNqIctStrategy.cs:597`) → retroceso+confirmación 1m → rara vez se completa.
+  - Apagar B elimina la pre-emción → próximo paso: correr A aislada con **NinjaScript Output abierto**
+    para ver el gate que la mata y aflojarlo. Meta A: ~8-10 trades/mes a ~65-70% WR ≈ $3.000.
+- **Herramienta (`backtest/analyze_backtest.py`) parchada (carril Stream A):** ahora tolera **locale
+  colombiano** (`$ 1.150,00` coma decimal, antes lo leía como 25000), **fechas truncadas** de la grilla
+  y **nombres truncados** (`LongSw`→B). 11/11 tests OK. Sirve para todo export futuro del equipo sin
+  depender del botón Export (que no aparece en su build de NT8).
+- **Docs actualizados:** `CLAUDE.md` (banner flujo único A + B/C apagados + roadmap §1), este `BITACORA`,
+  `TAREAS` (reto §F cerrado). Estrategia canónica `estrategia_liquidity_sweep_fvg.md` (= Setup A) sigue válida.
+
+**FIX de Setup A (cambio de LÓGICA en `ApexNqIctStrategy.cs` — 🔔 avisar a Sergio, es su archivo):**
+- **Diagnóstico con el Output real (`NT8_logs.txt`, A aislada):** A armó **1 sola vez** en ~40 sesiones
+  (y ese trade ganó +$700). Dos cuellos:
+  1. **Triple conjunción en una misma barra 15m** (`choch && disp && fvg`, ex-línea 597). El log probó que
+     **displacement y FVG llegan desfasados 1-2 barras** y casi nunca coincidían → 0 arms.
+  2. **~mitad de las sesiones = `[PRE-AP] SIN datos overnight`** → sin rango premarket → A ni arranca.
+     El "SIN datos" **alterna** (no se agrupa en días viejos) → sospecha de **doble reset de sesión**
+     (la plantilla parte el día en 2 sesiones; la 2ª borra el rango). Zona horaria = ET (descartada).
+- **Arreglo #1 aplicado (cuello 1):** **desacople** — se latchean `sweepDispSeen` / `sweepFvgSeen` /
+  `sweepFvgL/U` dentro de la ventana post-sweep; A arma cuando CHoCH confirma Y ya ocurrieron displacement
+  y FVG (no exige misma barra). **Siguen exigiéndose las tres = misma calidad**, pero ya puede armar.
+  Brace balance OK (231/231). Copiado a `bin\Custom`. **Falta F5 + re-correr A aislada.**
+- **Arreglo #2 (cuello 2) — NO se tocó la lógica de sesión a ciegas** (riesgo de meter bugs). Se añadió
+  **diagnóstico**: `[RESET] sesion reset @ fecha hora` + fecha en los prints `[PRE-AP]`. Al re-correr,
+  el Output dirá si hay 2 resets el mismo día calendario → ahí se arregla la sesión con precisión.
+- **Pendiente operador (Esteban):** F5 + re-correr A aislada (NQ 1m ETH, Output abierto) → pasar el log.
+  Se espera ver (a) A armando varias veces (fix #1), (b) los `[RESET]` para confirmar el doble-sesión.
 
 ### 2026-06-06 — Sesión 13 (Claude Stream A en PC de Esteban / Spoke186)
 

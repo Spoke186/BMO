@@ -13,8 +13,16 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 - **Bróker/feed:** Rithmic o Tradovate vía Apex.
 - Descartado: Python+API y TradingView+PickMyTrade.
 
-## Estrategia (decidida)
-Dos setups ICT, comparten `tradedToday` (1 entrada/día total). **Ventana NY: 9:30–11:00 ET = Colombia 8:30–10:00 (EDT). En EST (invierno) ajustar `KillZoneEnd` a 1000.**
+## Estrategia (decidida) — FLUJO ÚNICO: Setup A (FVG)
+> **Decisión operador sesión 14 (2026-06-07): el proyecto se cierra a UN solo flujo = Setup A**
+> (el de mayor calidad, confluencia 15m). **Setup B y C quedan APAGADOS por default**
+> (`EnableSetupB=false`, `EnableSetupC=false`) — su código sigue **intacto y reactivable**
+> (poner el Input en `true`). El bot opera SOLO con A. Se cierra el "reto A vs B".
+> ⚠️ **A hoy dispara ~0 trades** (B lo pre-emptía + cadena 15m muy restrictiva); el trabajo en
+> curso es **aflojar A** para que produzca con su WR de calidad (ver roadmap §1).
+> 🔔 Decisión que apaga el Setup B de Sergio → **avisar al equipo** (BITACORA + TAREAS).
+>
+> Ventana NY: 9:30–11:00 ET = Colombia 8:30–10:00 (EDT). En EST (invierno) ajustar `KillZoneEnd` a 1000.
 
 ### Setup A — FVG (mayor calidad, requiere confluencia 15m)
 Temporalidades: **15m sesgo/FVG, 1m gatillo**.
@@ -26,7 +34,10 @@ Temporalidades: **15m sesgo/FVG, 1m gatillo**.
 6. **Confirmación en 1m** (al menos una): vela de rechazo (mecha/cuerpo ≥ 1.5) O mini-CHoCH en 1m dentro del FVG.
 7. **Entrada** = mercado al cierre de la vela de confirmación 1m, a favor de tendencia.
 
-### Setup B — Sweep directo (entrada inmediata, sin FVG)
+### Setup B — Sweep directo (entrada inmediata, sin FVG) · ⏸️ APAGADO por default (`EnableSetupB=false`)
+> Dormido desde sesión 14 (flujo único A). Código intacto; reactivable con el Input en `true`.
+> Lo de abajo describe su lógica para cuando/si se reactive.
+
 Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles de barrida:
 1. Rango pre-mercado (8:00–9:30 ET): `preMarketHigh` / `preMarketLow`
 2. **PDH/PDL** (Previous Day High/Low, `EnablePdhPdl=true`): niveles ICT de mayor liquidez.
@@ -60,7 +71,11 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
 - Nunca primer run en cuenta fondeada. Backtest → Sim → Eval → Fondeada.
 
 ## Pendiente / roadmap
-1. Backtest + tuning (Strategy Analyzer).
+1. **Flujo único A — hacer que A dispare (PRIORIDAD sesión 14).** Correr A aislada (B/C ya off)
+   NQ 1m ETH con NinjaScript Output abierto → identificar el gate que mata a A (trend=0 / sweep
+   sin confirmar / CHoCH+displacement+FVG en UNA misma barra 15m `ApexNqIctStrategy.cs:597` /
+   confirmación 1m) → aflojar ESE gate preservando la calidad → re-backtest con `analyze_backtest.py`.
+   Meta A: **~8-10 trades/mes a ~65-70% WR ≈ $3.000**. Cambios de lógica del `.cs` = coordinar con Sergio.
 2. ~~Persistencia P&L → regla consistencia 50% real~~ → hecho en tiempo real (`DailyPnlTracker`).
    Falta validar en Sim que `RecordTrade`/`WouldViolateConsistency` disparan bien.
 3. TP "siguiente liquidez" (fase 2).

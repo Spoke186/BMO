@@ -1,0 +1,288 @@
+[PRE-AP] Range 1m 800–930 ET [0,00, 0,00]
+[SETUP-A] trend=0 en 22:15 — sin sesgo 15m, Setup A bloqueado hoy
+[TREND-15m] 0 → 1 | highs=1 lows=2 @ 01:00
+[TREND-15m] 1 → -1 | highs=1 lows=3 @ 02:15
+[SWEEP-A] High 15m perforado @ 02:15 nivel=0,00 high=27902,25
+[TREND-15m] -1 → 1 | highs=1 lows=4 @ 03:45
+[PDH/PDL] Nueva sesion: PDH=28247,00 PDL=27818,25
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=2 lows=1 @ 21:15
+[TREND-15m] -1 → 1 | highs=3 lows=2 @ 23:30
+[PRE-AP] Range 1m 800–930 ET [28336,00, 28506,00]
+[PDH/PDL] Nueva sesion: PDH=28800,00 PDL=28243,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 20:00
+[TREND-15m] 1 → -1 | highs=5 lows=7 @ 07:00
+[PRE-AP] Range 1m 800–930 ET [28708,00, 28902,50]
+[SWEEP-A] High 15m perforado @ 09:45 nivel=28902,50 high=28915,00
+[SWEEP-A] Barrida HIGH confirmada @ 09:45. Buscando CHoCH...
+[CHoCH-A] Short choch=False(28929<28708) disp=False(-29,3>=26,5) fvg=False
+[CHoCH-A] Short choch=False(28863<28708) disp=True(65,5>=28,2) fvg=False
+[CHoCH-A] Short choch=False(28854<28708) disp=False(9,0>=28,7) fvg=False
+[TREND-15m] -1 → 1 | highs=6 lows=9 @ 10:45
+[CHoCH-A] Long choch=False(28880>28945) disp=False(25,5>=28,7) fvg=False
+[CHoCH-A] Long choch=False(28784>28945) disp=False(-95,3>=31,5) fvg=False
+[CHoCH-A] Long choch=False(28700>28945) disp=False(-85,5>=33,4) fvg=False
+[CHoCH-A] Long choch=False(28741>28945) disp=True(40,0>=35,8) fvg=False
+[CHoCH-A] Long choch=False(28726>28945) disp=False(-14,8>=36,2) fvg=False
+[CHoCH-A] Long choch=False(28697>28945) disp=False(-29,0>=36,8) fvg=False
+[CHoCH-A] Long choch=False(28669>28945) disp=False(-28,5>=36,8) fvg=False
+[CHoCH-A] Long choch=False(28608>28945) disp=False(-59,8>=40,4) fvg=False
+[CHoCH-A] Long choch=False(28646>28945) disp=False(37,0>=41,7) fvg=False
+[SWEEP-A] CHoCH timeout @ 13:00. Resetando.
+[SWEEP-A] Low 15m perforado @ 13:15 nivel=28708,00 low=28654,00
+[TREND-15m] 1 → -1 | highs=7 lows=11 @ 14:00
+[TREND-15m] -1 → 1 | highs=8 lows=12 @ 16:00
+[PDH/PDL] Nueva sesion: PDH=28944,75 PDL=28552,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=1 lows=2 @ 22:30
+[PRE-AP] Range 1m 800–930 ET [28859,50, 29166,00]
+[PDH/PDL] Nueva sesion: PDH=29386,75 PDL=28541,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=1 lows=2 @ 21:00
+[TREND-15m] 1 → -1 | highs=2 lows=4 @ 00:00
+[TREND-15m] -1 → 1 | highs=6 lows=5 @ 05:45
+[PRE-AP] Range 1m 800–930 ET [29281,50, 29434,75]
+[SWEEP-A] Low 15m perforado @ 09:30 nivel=29281,50 low=29274,50
+[SWEEP-A] Barrida LOW confirmada @ 09:30. Buscando CHoCH...
+[CHoCH-A] Long choch=False(29365>29435) disp=True(78,8>=37,8) fvg=False
+[CHoCH-A] Long choch=False(29392>29435) disp=False(26,0>=37,5) fvg=False
+[CHoCH-A] Long choch=False(29369>29435) disp=False(-21,8>=36,8) fvg=False
+[CHoCH-A] Long choch=False(29427>29435) disp=True(56,8>=37,1) fvg=False
+[CHoCH-A] Long choch=False(29421>29435) disp=False(-5,8>=36,1) fvg=False
+[CHoCH-A] Long choch=True(29465>29435) disp=True(45,0>=36,1) fvg=False
+[CHoCH-A] Long choch=True(29479>29435) disp=False(14,0>=34,5) fvg=True
+[CHoCH-A] Long choch=True(29465>29435) disp=False(-14,5>=33,5) fvg=True
+[CHoCH-A] Long choch=False(29415>29435) disp=False(-50,0>=35,7) fvg=False
+[CHoCH-A] Long choch=False(29405>29480) disp=False(-8,5>=34,7) fvg=False
+[CHoCH-A] Long choch=False(29390>29480) disp=False(-14,3>=34,3) fvg=False
+[CHoCH-A] Long choch=False(29437>29480) disp=True(47,3>=34,6) fvg=False
+[SWEEP-A] CHoCH timeout @ 12:45. Resetando.
+[TREND-15m] 1 → -1 | highs=10 lows=10 @ 16:00
+[PDH/PDL] Nueva sesion: PDH=29480,00 PDL=29225,75
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=1 lows=2 @ 21:30
+[PRE-AP] Range 1m 800–930 ET [29088,25, 29296,00]
+[TREND-15m] -1 → 1 | highs=4 lows=5 @ 09:45
+[SWEEP-A] Low 15m perforado @ 09:45 nivel=29088,25 low=29006,50
+[SWEEP-A] Barrida LOW confirmada @ 14:45. Buscando CHoCH...
+[TREND-15m] 1 → -1 | highs=5 lows=6 @ 15:45
+[PDH/PDL] Nueva sesion: PDH=29455,75 PDL=28742,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 21:45
+[TREND-15m] 1 → -1 | highs=6 lows=5 @ 08:00
+[PRE-AP] Range 1m 800–930 ET [29075,00, 29304,75]
+[SWEEP-A] High 15m perforado @ 10:00 nivel=29304,75 high=29322,00
+[TREND-15m] -1 → 1 | highs=7 lows=8 @ 14:15
+[PDH/PDL] Nueva sesion: PDH=29565,50 PDL=29055,50
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 20:45
+[TREND-15m] 1 → -1 | highs=3 lows=2 @ 00:45
+[TREND-15m] -1 → 1 | highs=4 lows=3 @ 02:15
+[TREND-15m] 1 → -1 | highs=5 lows=4 @ 06:00
+[PRE-AP] Range 1m 800–930 ET [29448,25, 29684,75]
+[SWEEP-A] High 15m perforado @ 09:45 nivel=29684,75 high=29686,75
+[SWEEP-A] Barrida HIGH confirmada @ 10:00. Buscando CHoCH...
+[CHoCH-A] Short choch=False(29733<29448) disp=False(-58,3>=38,6) fvg=False
+[CHoCH-A] Short choch=False(29757<29448) disp=False(-23,5>=37,6) fvg=False
+[CHoCH-A] Short choch=False(29752<29448) disp=False(4,8>=36,8) fvg=False
+[CHoCH-A] Short choch=False(29755<29448) disp=False(-3,0>=35,7) fvg=False
+[CHoCH-A] Short choch=False(29756<29448) disp=False(0,0>=34,4) fvg=False
+[CHoCH-A] Short choch=False(29727<29448) disp=False(28,5>=34,9) fvg=False
+[CHoCH-A] Short choch=False(29719<29448) disp=False(8,5>=34,3) fvg=True
+[CHoCH-A] Short choch=False(29728<29448) disp=False(-10,0>=33,9) fvg=True
+[CHoCH-A] Short choch=False(29660<29448) disp=True(68,3>=35,9) fvg=False
+[CHoCH-A] Short choch=False(29648<29448) disp=False(11,3>=36,5) fvg=True
+[CHoCH-A] Short choch=False(29698<29448) disp=False(-49,3>=36,7) fvg=True
+[CHoCH-A] Short choch=False(29731<29448) disp=False(-32,5>=36,5) fvg=False
+[SWEEP-A] CHoCH timeout @ 13:15. Resetando.
+[SWEEP-A] High 15m perforado @ 13:30 nivel=29684,75 high=29708,00
+[SWEEP-A] Barrida HIGH confirmada @ 13:30. Buscando CHoCH...
+[CHoCH-A] Short choch=False(29673<29595) disp=False(0,8>=36,3) fvg=False
+[SWEEP-A] High 15m perforado @ 14:00 nivel=29684,75 high=29717,75
+[SWEEP-A] Barrida HIGH confirmada @ 15:30. Buscando CHoCH...
+[SWEEP-A] High 15m perforado @ 15:45 nivel=29684,75 high=29691,75
+[SWEEP-A] Barrida HIGH confirmada @ 15:45. Buscando CHoCH...
+[TREND-15m] -1 → 1 | highs=7 lows=7 @ 16:00
+[PDH/PDL] Nueva sesion: PDH=29782,00 PDL=29448,25
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=1 lows=2 @ 22:15
+[PRE-AP] Range 1m 800–930 ET [29089,75, 29382,75]
+[TREND-15m] -1 → 1 | highs=5 lows=7 @ 10:15
+[TREND-15m] 1 → -1 | highs=6 lows=7 @ 11:30
+[SWEEP-A] High 15m perforado @ 12:30 nivel=29382,75 high=29430,00
+[SWEEP-A] Barrida HIGH confirmada @ 13:45. Buscando CHoCH...
+[TREND-15m] -1 → 1 | highs=7 lows=8 @ 14:00
+[PDH/PDL] Nueva sesion: PDH=29734,00 PDL=29089,75
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=1 lows=2 @ 20:00
+[TREND-15m] -1 → 1 | highs=3 lows=3 @ 22:15
+[PRE-AP] Range 1m 800–930 ET [29129,00, 29419,75]
+[SWEEP-A] Low 15m perforado @ 09:45 nivel=29129,00 low=28970,75
+[TREND-15m] 1 → -1 | highs=8 lows=7 @ 12:30
+[TREND-15m] -1 → 1 | highs=9 lows=8 @ 15:45
+[PDH/PDL] Nueva sesion: PDH=29419,75 PDL=28814,75
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=0 @ 20:15
+[TREND-15m] 1 → -1 | highs=3 lows=1 @ 23:30
+[TREND-15m] -1 → 1 | highs=5 lows=3 @ 03:45
+[TREND-15m] 1 → -1 | highs=6 lows=4 @ 07:00
+[PRE-AP] Range 1m 800–930 ET [28663,00, 29068,00]
+[TREND-15m] -1 → 1 | highs=7 lows=5 @ 09:30
+[PDH/PDL] Nueva sesion: PDH=29188,50 PDL=28663,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 19:30
+[TREND-15m] 1 → -1 | highs=3 lows=4 @ 23:00
+[TREND-15m] -1 → 1 | highs=5 lows=6 @ 04:45
+[PRE-AP] Range 1m 800–930 ET [29008,50, 29233,75]
+[PDH/PDL] Nueva sesion: PDH=29397,50 PDL=28797,25
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 22:15
+[TREND-15m] 1 → -1 | highs=5 lows=3 @ 05:15
+[PRE-AP] Range 1m 800–930 ET [29127,00, 29340,00]
+[TREND-15m] -1 → 1 | highs=7 lows=4 @ 10:00
+[TREND-15m] 1 → -1 | highs=8 lows=5 @ 12:00
+[SWEEP-A] High 15m perforado @ 12:15 nivel=29340,00 high=29382,00
+[TREND-15m] -1 → 1 | highs=9 lows=6 @ 13:45
+[PDH/PDL] Nueva sesion: PDH=29554,00 PDL=29113,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 01:00
+[PRE-AP] Range 1m 800–930 ET [29490,25, 29715,50]
+[PDH/PDL] Nueva sesion: PDH=29749,00 PDL=29436,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=1 lows=2 @ 22:30
+[TREND-15m] 1 → -1 | highs=4 lows=3 @ 03:30
+[TREND-15m] -1 → 1 | highs=6 lows=4 @ 08:15
+[PRE-AP] Range 1m 800–930 ET [29937,75, 29993,75]
+[SWEEP-A] Low 15m perforado @ 09:45 nivel=29937,75 low=29910,00
+[SWEEP-A] Barrida LOW confirmada @ 10:15. Buscando CHoCH...
+[CHoCH-A] Long choch=False(29934>29990) disp=False(-34,0>=16,5) fvg=False
+[CHoCH-A] Long choch=False(29927>29990) disp=False(-7,0>=16,2) fvg=False
+[CHoCH-A] Long choch=False(29923>29991) disp=False(-3,0>=15,7) fvg=False
+[CHoCH-A] Long choch=False(29932>29991) disp=False(9,3>=15,6) fvg=False
+[CHoCH-A] Long choch=False(29924>29991) disp=False(-7,8>=15,4) fvg=False
+[CHoCH-A] Long choch=False(29935>29991) disp=False(10,8>=15,0) fvg=False
+[CHoCH-A] Long choch=False(29963>29991) disp=True(28,3>=15,6) fvg=False
+[PDH/PDL] Nueva sesion: PDH=29995,00 PDL=29676,25
+[PRE-AP] Range 15m fallback [29936,75, 29993,75]
+[SETUP-A] trend=0 en 17:15 — sin sesgo 15m, Setup A bloqueado hoy
+[TREND-15m] 0 → -1 | highs=1 lows=2 @ 21:30
+[TREND-15m] -1 → 1 | highs=4 lows=3 @ 02:15
+[SWEEP-A] Low 15m perforado @ 02:15 nivel=29936,75 low=29762,50
+[SWEEP-A] Barrida LOW confirmada @ 09:00. Buscando CHoCH...
+[CHoCH-A] Long choch=True(30028>29931) disp=False(21,5>=24,9) fvg=True
+[CHoCH-A] Long choch=True(30068>29931) disp=True(39,0>=26,4) fvg=True
+[SETUP] Dir=1 FVG [29938,00,29976,00] Invalid=29936,25
+Strategy 'ApexNqIctStrategy/-1': Stop/target handling set to 'By strategy position' since currency based stop order was placed.
+[2DO-TRADE] Trade ganador (+$ 700,00). tradedToday=false → 2do trade habilitado.
+[SWEEP-A] Low 15m perforado @ 11:00 nivel=29936,75 low=29886,00
+[SWEEP-A] Barrida LOW confirmada @ 11:15. Buscando CHoCH...
+[CHoCH-A] Long choch=False(29992>30119) disp=True(53,8>=31,3) fvg=False
+[CHoCH-A] Long choch=False(29964>30119) disp=False(-28,0>=31,4) fvg=False
+[CHoCH-A] Long choch=False(29975>30119) disp=False(11,3>=30,7) fvg=False
+[CHoCH-A] Long choch=False(29987>30119) disp=False(11,3>=30,0) fvg=False
+[CHoCH-A] Long choch=False(29969>30016) disp=False(-17,8>=29,4) fvg=False
+[CHoCH-A] Long choch=False(29985>30016) disp=False(15,3>=29,1) fvg=False
+[CHoCH-A] Long choch=False(29997>30016) disp=False(10,8>=28,3) fvg=False
+[CHoCH-A] Long choch=True(30025>30016) disp=True(28,5>=28,4) fvg=False
+[CHoCH-A] Long choch=True(30046>30016) disp=False(20,5>=27,7) fvg=True
+[CHoCH-A] Long choch=True(30031>30016) disp=False(-15,0>=27,0) fvg=True
+[PDH/PDL] Nueva sesion: PDH=30118,75 PDL=29744,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 21:15
+[TREND-15m] 1 → -1 | highs=3 lows=1 @ 22:45
+[TREND-15m] -1 → 1 | highs=5 lows=4 @ 04:30
+[PRE-AP] Range 1m 800–930 ET [29888,25, 30271,00]
+[SWEEP-A] Low 15m perforado @ 09:45 nivel=29888,25 low=29877,50
+[SWEEP-A] Barrida LOW confirmada @ 09:45. Buscando CHoCH...
+[CHoCH-A] Long choch=False(29941>30379) disp=False(-53,0>=47,2) fvg=False
+[CHoCH-A] Long choch=False(29951>30379) disp=False(10,0>=46,8) fvg=False
+[CHoCH-A] Long choch=False(29952>30379) disp=False(1,0>=46,4) fvg=False
+[CHoCH-A] Long choch=False(29891>30379) disp=False(-61,0>=47,3) fvg=False
+[CHoCH-A] Long choch=False(29936>30379) disp=False(45,8>=46,5) fvg=False
+[CHoCH-A] Long choch=False(29996>30379) disp=True(61,3>=46,8) fvg=False
+[CHoCH-A] Long choch=False(29992>30379) disp=False(-4,8>=45,2) fvg=True
+[CHoCH-A] Long choch=False(30030>30379) disp=False(39,3>=44,8) fvg=True
+[CHoCH-A] Long choch=False(29988>30379) disp=False(-43,0>=44,7) fvg=False
+[CHoCH-A] Long choch=False(29922>30379) disp=False(-68,3>=45,9) fvg=False
+[CHoCH-A] Long choch=False(29956>30379) disp=False(35,8>=45,3) fvg=False
+[CHoCH-A] Long choch=False(29948>30048) disp=False(-9,0>=44,1) fvg=False
+[SWEEP-A] CHoCH timeout @ 13:00. Resetando.
+[PDH/PDL] Nueva sesion: PDH=30379,00 PDL=29877,50
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=2 lows=1 @ 19:15
+[TREND-15m] -1 → 1 | highs=3 lows=2 @ 20:45
+[TREND-15m] 1 → -1 | highs=4 lows=2 @ 22:00
+[TREND-15m] -1 → 1 | highs=6 lows=4 @ 05:00
+[PRE-AP] Range 1m 800–930 ET [29920,25, 30187,00]
+[PDH/PDL] Nueva sesion: PDH=30344,50 PDL=29763,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=2 lows=1 @ 19:15
+[TREND-15m] -1 → 1 | highs=4 lows=2 @ 01:00
+[PRE-AP] Range 1m 800–930 ET [30336,00, 30536,00]
+[SWEEP-A] Low 15m perforado @ 09:45 nivel=30336,00 low=30289,00
+[SWEEP-A] Barrida LOW confirmada @ 10:00. Buscando CHoCH...
+[CHoCH-A] Long choch=False(30427>30536) disp=True(67,3>=37,6) fvg=False
+[CHoCH-A] Long choch=False(30398>30536) disp=False(-28,8>=38,4) fvg=False
+[CHoCH-A] Long choch=False(30377>30536) disp=False(-21,3>=38,1) fvg=False
+[CHoCH-A] Long choch=False(30363>30536) disp=False(-14,3>=37,3) fvg=False
+[CHoCH-A] Long choch=False(30436>30536) disp=True(71,8>=38,5) fvg=False
+[CHoCH-A] Long choch=False(30404>30536) disp=False(-31,3>=37,7) fvg=True
+[CHoCH-A] Long choch=False(30423>30536) disp=False(18,5>=37,7) fvg=True
+[CHoCH-A] Long choch=False(30397>30536) disp=False(-26,0>=37,2) fvg=False
+[CHoCH-A] Long choch=False(30393>30536) disp=False(-5,5>=35,8) fvg=False
+[CHoCH-A] Long choch=False(30368>30536) disp=False(-24,5>=35,1) fvg=False
+[CHoCH-A] Long choch=False(30348>30536) disp=False(-19,5>=34,2) fvg=False
+[CHoCH-A] Long choch=False(30302>30536) disp=False(-45,0>=34,5) fvg=False
+[SWEEP-A] CHoCH timeout @ 13:15. Resetando.
+[SWEEP-A] Low 15m perforado @ 13:30 nivel=30336,00 low=30328,50
+[SWEEP-A] Barrida LOW confirmada @ 13:30. Buscando CHoCH...
+[CHoCH-A] Long choch=False(30385>30536) disp=False(5,3>=34,2) fvg=False
+[SWEEP-A] Low 15m perforado @ 14:00 nivel=30336,00 low=30316,50
+[SWEEP-A] Barrida LOW confirmada @ 14:15. Buscando CHoCH...
+[PDH/PDL] Nueva sesion: PDH=30536,00 PDL=30216,50
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=2 lows=1 @ 22:15
+[TREND-15m] 1 → -1 | highs=6 lows=4 @ 04:30
+[PRE-AP] Range 1m 800–930 ET [30291,50, 30467,25]
+[SWEEP-A] High 15m perforado @ 10:30 nivel=30467,25 high=30490,00
+[TREND-15m] -1 → 1 | highs=10 lows=6 @ 11:30
+[PDH/PDL] Nueva sesion: PDH=30693,00 PDL=30291,50
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=1 lows=2 @ 22:00
+[TREND-15m] -1 → 1 | highs=3 lows=3 @ 04:00
+[TREND-15m] 1 → -1 | highs=5 lows=5 @ 07:30
+[PRE-AP] Range 1m 800–930 ET [30423,75, 30647,25]
+[TREND-15m] -1 → 1 | highs=6 lows=6 @ 10:00
+[TREND-15m] 1 → -1 | highs=8 lows=6 @ 13:00
+[SWEEP-A] High 15m perforado @ 13:00 nivel=30647,25 high=30650,00
+[SWEEP-A] Barrida HIGH confirmada @ 13:00. Buscando CHoCH...
+[CHoCH-A] Short choch=False(30648<30424) disp=False(-19,3>=27,6) fvg=False
+[CHoCH-A] Short choch=False(30638<30609) disp=False(10,5>=26,4) fvg=False
+[CHoCH-A] Short choch=False(30619<30609) disp=False(19,3>=26,9) fvg=False
+[SWEEP-A] High 15m perforado @ 14:15 nivel=30647,25 high=30682,25
+[TREND-15m] -1 → 1 | highs=9 lows=8 @ 16:00
+[PDH/PDL] Nueva sesion: PDH=30763,25 PDL=30317,75
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=2 lows=1 @ 20:45
+[TREND-15m] -1 → 1 | highs=3 lows=2 @ 00:30
+[PRE-AP] Range 1m 800–930 ET [30496,00, 30807,75]
+[TREND-15m] 1 → -1 | highs=9 lows=6 @ 10:30
+[TREND-15m] -1 → 1 | highs=11 lows=7 @ 15:45
+[SWEEP-A] Low 15m perforado @ 16:00 nivel=30496,00 low=30478,25
+[PDH/PDL] Nueva sesion: PDH=30807,75 PDL=30478,25
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → 1 | highs=0 lows=2 @ 19:45
+[TREND-15m] 1 → -1 | highs=1 lows=3 @ 22:15
+[TREND-15m] -1 → 1 | highs=3 lows=4 @ 03:00
+[TREND-15m] 1 → -1 | highs=4 lows=5 @ 05:45
+[PRE-AP] Range 1m 800–930 ET [30151,00, 30364,50]
+[TREND-15m] -1 → 1 | highs=6 lows=6 @ 09:30
+[PDH/PDL] Nueva sesion: PDH=30603,25 PDL=30151,00
+[PRE-AP] SIN datos overnight. Usar plantilla ETH. Sin setups hoy.
+[TREND-15m] 0 → -1 | highs=0 lows=2 @ 21:15
+[TREND-15m] -1 → 1 | highs=1 lows=3 @ 23:45
+[TREND-15m] 1 → -1 | highs=2 lows=4 @ 03:15
+[TREND-15m] -1 → 1 | highs=3 lows=4 @ 05:00
+[TREND-15m] 1 → -1 | highs=4 lows=4 @ 06:30
+[PRE-AP] Range 1m 800–930 ET [29758,00, 30100,50]
