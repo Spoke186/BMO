@@ -327,6 +327,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		// Score del ultimo setup armado (para log y debugging).
 		private int lastTradeScore;
+
+		// Latches de confluencia Setup A: displacement y FVG pueden llegar en barras 15m distintas.
+		// Se latchean desde la barrida y se arma el setup cuando los tres ocurrieron (cualquier orden).
+		private bool   sweepDispSeen;
+		private bool   sweepFvgSeen;
+		private double sweepFvgL;
+		private double sweepFvgU;
 		#endregion
 
 		protected override void OnStateChange()
@@ -725,6 +732,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						sweepLevel15m     = preMarketLow;
 						sweepBar15m       = CurrentBars[1];
 						sweepState15m     = 1;
+						sweepDispSeen = false; sweepFvgSeen = false; sweepFvgL = 0; sweepFvgU = 0;
 						levelBrokenLow15m = false;
 						levelBrokenHigh15m = false; // cancelar lado contrario
 						if (trend == 0) trend = 1;  // fijar dirección provisional
@@ -743,6 +751,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						sweepLevel15m      = preMarketHigh;
 						sweepBar15m        = CurrentBars[1];
 						sweepState15m      = 1;
+						sweepDispSeen = false; sweepFvgSeen = false; sweepFvgL = 0; sweepFvgU = 0;
 						levelBrokenHigh15m = false;
 						levelBrokenLow15m  = false; // cancelar lado contrario
 						if (trend == 0) trend = -1; // fijar dirección provisional
@@ -756,6 +765,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				{
 					Print($"[SWEEP-A] CHoCH timeout @ {Times[1][0]:HH:mm}. Resetando.");
 					sweepState15m = 0;
+					sweepDispSeen = false; sweepFvgSeen = false; sweepFvgL = 0; sweepFvgU = 0;
 					return;
 				}
 
@@ -763,8 +773,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				if (trend == 1) // CHoCH alcista en 15m
 				{
-					// Fallback: sin swings aun (RTH template), usar el High de la barra de sweep como CHoCH.
-					// Romper ese high en barra posterior = CHoCH minimo valido + displacement confirma impulso.
+					// CHoCH level: ultimo swing high 15m o fallback al High de la barra de sweep.
 					double chochLevel;
 					int sweepOff = CurrentBars[1] - sweepBar15m;
 					if      (swingHighs15m.Count > 0) chochLevel = swingHighs15m[swingHighs15m.Count - 1];
@@ -772,98 +781,82 @@ namespace NinjaTrader.NinjaScript.Strategies
 					else if (preMarketHigh > 0)       chochLevel = preMarketHigh;
 					else return;
 
-					// Displacement: verificar en bar[1] (barra de impulso que crea el FVG).
-					// bar[0] = confirmacion CHoCH (puede ser barra chica).
-					// bar[1] = impulso institucional (grande, crea el gap entre bar[2] y bar[0]).
-					// FVG = [High[bar2], Low[bar0]] — gap creado por el impulso en bar[1]. ← CORRECTO
-					// Si se verifica displacement en bar[0], Low[0] <= High[2] casi siempre (sweep en medio).
-					double body  = Math.Abs(Closes[1][1] - Opens[1][1]);
-					double range = Highs[1][1]  - Lows[1][1];
-					bool isDisplace = range > 0
-					               && range >= DisplacementAtrMult * atrVal
-					               && body > 0
-					               && (body / range) >= DisplacementBodyPct;
-					bool isChoch    = Closes[1][0] > chochLevel;
+					// LATCH Displacement: bar[1] = impulso institucional.
+					if (!sweepDispSeen && CurrentBars[1] >= 2)
+					{
+						double body  = Math.Abs(Closes[1][1] - Opens[1][1]);
+						double range = Highs[1][1] - Lows[1][1];
+						if (range > 0 && range >= DisplacementAtrMult * atrVal
+						             && body > 0 && (body / range) >= DisplacementBodyPct)
+						{
+							sweepDispSeen = true;
+							Print($"[DISP-A] Long displacement latcheado body={body:F1} rng={range:F1}");
+						}
+					}
 
-					// FVG alcista: ventana doble de 3 barras (A=[2],[1],[0]; B=[3],[2],[1])
-					double fvgL = 0, fvgU = 0;
-					bool   hasFvg = false;
-					double fvgSize = 0;
+					// LATCH FVG alcista: ventana doble + iFVG. Guarda el mayor FVG visto.
 					if (CurrentBars[1] >= 3)
 					{
 						double uA = Lows[1][0], lA = Highs[1][2];
-						if (uA > lA && (uA - lA) >= MinFvgPoints) { fvgL = lA; fvgU = uA; fvgSize = uA - lA; hasFvg = true; }
+						if (uA > lA && (uA - lA) >= MinFvgPoints)
+						{
+							if (!sweepFvgSeen || (uA - lA) > (sweepFvgU - sweepFvgL))
+							{ sweepFvgL = lA; sweepFvgU = uA; }
+							sweepFvgSeen = true;
+						}
 					}
-					if (!hasFvg && CurrentBars[1] >= 4)
+					if (CurrentBars[1] >= 4)
 					{
 						double uB = Lows[1][1], lB = Highs[1][3];
-						if (uB > lB && (uB - lB) >= MinFvgPoints) { fvgL = lB; fvgU = uB; fvgSize = uB - lB; hasFvg = true; }
+						if (uB > lB && (uB - lB) >= MinFvgPoints)
+						{
+							if (!sweepFvgSeen || (uB - lB) > (sweepFvgU - sweepFvgL))
+							{ sweepFvgL = lB; sweepFvgU = uB; }
+							sweepFvgSeen = true;
+						}
 					}
-
-					// iFVG alcista: FVG bajista previo (en el downswing) reclamado por el CHoCH.
-					// Zona: [High(newest), Low(oldest)] del FVG bajista → ahora soporte.
-					if (!hasFvg && CurrentBars[1] >= 5)
+					if (!sweepFvgSeen && CurrentBars[1] >= 5)
 					{
 						for (int k = 1; k <= 5 && (k + 2) < CurrentBars[1]; k++)
 						{
-							double ifvgFloor = Highs[1][k];    // High del bar mas reciente del FVG bajista
-							double ifvgCeil  = Lows[1][k + 2]; // Low del bar mas antiguo
-							double iSize     = ifvgCeil - ifvgFloor;
-							if (iSize >= MinFvgPoints && Closes[1][0] > ifvgCeil)
-							{
-								fvgL = ifvgFloor; fvgU = ifvgCeil; fvgSize = iSize; hasFvg = true;
-								Print($"[iFVG-A] Long iFVG [{fvgL:F1},{fvgU:F1}] gap={iSize:F1}pts reclamado");
-								break;
-							}
+							double fl = Highs[1][k], fu = Lows[1][k + 2];
+							if ((fu - fl) >= MinFvgPoints && Closes[1][0] > fu)
+							{ sweepFvgL = fl; sweepFvgU = fu; sweepFvgSeen = true;
+							  Print($"[iFVG-A] Long iFVG latcheado [{fl:F1},{fu:F1}]"); break; }
 						}
 					}
 
+					bool isChoch = Closes[1][0] > chochLevel;
+					double fvgSize = sweepFvgSeen ? sweepFvgU - sweepFvgL : 0;
+
 					Print($"[CHoCH-A] Long choch={isChoch}(C={Closes[1][0]:F0}>{chochLevel:F0}) " +
-					      $"disp={isDisplace}[bar-1](body={body:F1} rng={range:F1} need={DisplacementAtrMult*atrVal:F1}) " +
-					      $"fvg={hasFvg}([{Highs[1][2]:F0},{Lows[1][0]:F0}]={fvgSize:F1}pts)");
+					      $"dispSeen={sweepDispSeen} fvgSeen={sweepFvgSeen}(sz={fvgSize:F1}pts)");
 
-					if (isChoch && isDisplace && hasFvg)
+					if (isChoch && sweepDispSeen && sweepFvgSeen)
 					{
-						// Bias: bloquear si gap overnight está explícitamente en contra
 						if (dailyBiasDir == -1)
-						{
-							Print($"[BIAS] Sesgo overnight BEAR → setup LONG bloqueado");
-							sweepState15m = 0; return;
-						}
+						{ Print("[BIAS] Sesgo overnight BEAR -> LONG bloqueado"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
-						// Trade Score (spec v2 §18): minimo 80/100
-						int score = CalcTradeScore(1, true, isDisplace, fvgSize, true);
+						int score = CalcTradeScore(1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
-						{
-							Print($"[SCORE] {score}/100 < {MinTradeScore} → setup descartado");
-							sweepState15m = 0; return;
-						}
+						{ Print($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
-						// Stop estructural: distancia desde FVG hasta sweep level
 						if (MaxStructuralRiskUsd > 0)
 						{
-							double entryEst  = fvgU; // precio de entrada estimado en borde FVG
-							double stopLevel = sweepLevel15m - StopBufferTicks * TickSize;
-							double stopDist  = Math.Abs(entryEst - stopLevel);
-							double ptVal     = Instrument.MasterInstrument.PointValue;
-							double structRisk = stopDist * ptVal * Contratos;
+							double stopDist  = Math.Abs(sweepFvgU - (sweepLevel15m - StopBufferTicks * TickSize));
+							double structRisk = stopDist * Instrument.MasterInstrument.PointValue * Contratos;
 							if (structRisk > MaxStructuralRiskUsd)
-							{
-								Print($"[STRUCT] Riesgo estructural {structRisk:C} > {MaxStructuralRiskUsd:C} → skip");
-								sweepState15m = 0; return;
-							}
+							{ Print($"[STRUCT] Riesgo {structRisk:C} > {MaxStructuralRiskUsd:C} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 						}
 
 						lastTradeScore = score;
-						double invalidLvl = sweepLevel15m - StopBufferTicks * TickSize;
-						ArmSetup(1, fvgL, fvgU, invalidLvl);
-						sweepState15m = 0;
-						Print($"[SETUP-A] LONG armado. Score={score} Bias={dailyBiasDir}");
+						ArmSetup(1, sweepFvgL, sweepFvgU, sweepLevel15m - StopBufferTicks * TickSize);
+						sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false;
+						Print($"[SETUP-A] LONG armado. Score={score} FVG=[{sweepFvgL:F1},{sweepFvgU:F1}]");
 					}
 				}
 				else // trend == -1: CHoCH bajista en 15m
 				{
-					// Fallback: sin swings aun (RTH template), usar Low de la barra de sweep como CHoCH.
 					double chochLevel;
 					int sweepOff = CurrentBars[1] - sweepBar15m;
 					if      (swingLows15m.Count > 0) chochLevel = swingLows15m[swingLows15m.Count - 1];
@@ -871,91 +864,78 @@ namespace NinjaTrader.NinjaScript.Strategies
 					else if (preMarketLow < double.MaxValue && preMarketLow > 0) chochLevel = preMarketLow;
 					else return;
 
-					// Displacement: verificar en bar[1] (barra de impulso que crea el FVG).
-					// bar[0] = confirmacion CHoCH, bar[1] = impulso institucional.
-					// FVG bajista = [High[bar0], Low[bar2]] — gap creado por bar[1].
-					double body  = Math.Abs(Opens[1][1] - Closes[1][1]);
-					double range = Highs[1][1]  - Lows[1][1];
-					bool isDisplace = range > 0
-					               && range >= DisplacementAtrMult * atrVal
-					               && body > 0
-					               && (body / range) >= DisplacementBodyPct;
-					bool isChoch    = Closes[1][0] < chochLevel;
+					// LATCH Displacement bajista en bar[1]
+					if (!sweepDispSeen && CurrentBars[1] >= 2)
+					{
+						double body  = Math.Abs(Opens[1][1] - Closes[1][1]);
+						double range = Highs[1][1] - Lows[1][1];
+						if (range > 0 && range >= DisplacementAtrMult * atrVal
+						             && body > 0 && (body / range) >= DisplacementBodyPct)
+						{
+							sweepDispSeen = true;
+							Print($"[DISP-A] Short displacement latcheado body={body:F1} rng={range:F1}");
+						}
+					}
 
-					// FVG bajista: ventana doble
-					double fvgL = 0, fvgU = 0;
-					bool   hasFvg = false;
-					double fvgSize = 0;
+					// LATCH FVG bajista
 					if (CurrentBars[1] >= 3)
 					{
 						double uA = Lows[1][2], lA = Highs[1][0];
-						if (uA > lA && (uA - lA) >= MinFvgPoints) { fvgL = lA; fvgU = uA; fvgSize = uA - lA; hasFvg = true; }
+						if (uA > lA && (uA - lA) >= MinFvgPoints)
+						{
+							if (!sweepFvgSeen || (uA - lA) > (sweepFvgU - sweepFvgL))
+							{ sweepFvgL = lA; sweepFvgU = uA; }
+							sweepFvgSeen = true;
+						}
 					}
-					if (!hasFvg && CurrentBars[1] >= 4)
+					if (CurrentBars[1] >= 4)
 					{
 						double uB = Lows[1][3], lB = Highs[1][1];
-						if (uB > lB && (uB - lB) >= MinFvgPoints) { fvgL = lB; fvgU = uB; fvgSize = uB - lB; hasFvg = true; }
+						if (uB > lB && (uB - lB) >= MinFvgPoints)
+						{
+							if (!sweepFvgSeen || (uB - lB) > (sweepFvgU - sweepFvgL))
+							{ sweepFvgL = lB; sweepFvgU = uB; }
+							sweepFvgSeen = true;
+						}
 					}
-
-					// iFVG bajista: FVG alcista previo (en el upswing) reclamado por el CHoCH.
-					// Zona: [High(oldest), Low(newest)] del FVG alcista → ahora resistencia.
-					if (!hasFvg && CurrentBars[1] >= 5)
+					if (!sweepFvgSeen && CurrentBars[1] >= 5)
 					{
 						for (int k = 1; k <= 5 && (k + 2) < CurrentBars[1]; k++)
 						{
-							double ifvgFloor = Highs[1][k + 2]; // High del bar mas antiguo del FVG alcista
-							double ifvgCeil  = Lows[1][k];      // Low del bar mas reciente
-							double iSize     = ifvgCeil - ifvgFloor;
-							if (iSize >= MinFvgPoints && Closes[1][0] < ifvgFloor)
-							{
-								fvgL = ifvgFloor; fvgU = ifvgCeil; fvgSize = iSize; hasFvg = true;
-								Print($"[iFVG-A] Short iFVG [{fvgL:F1},{fvgU:F1}] gap={iSize:F1}pts reclamado");
-								break;
-							}
+							double fl = Highs[1][k + 2], fu = Lows[1][k];
+							if ((fu - fl) >= MinFvgPoints && Closes[1][0] < fl)
+							{ sweepFvgL = fl; sweepFvgU = fu; sweepFvgSeen = true;
+							  Print($"[iFVG-A] Short iFVG latcheado [{fl:F1},{fu:F1}]"); break; }
 						}
 					}
 
+					bool isChoch = Closes[1][0] < chochLevel;
+					double fvgSize = sweepFvgSeen ? sweepFvgU - sweepFvgL : 0;
+
 					Print($"[CHoCH-A] Short choch={isChoch}(C={Closes[1][0]:F0}<{chochLevel:F0}) " +
-					      $"disp={isDisplace}[bar-1](body={body:F1} rng={range:F1} need={DisplacementAtrMult*atrVal:F1}) " +
-					      $"fvg={hasFvg}({fvgSize:F1}pts)");
+					      $"dispSeen={sweepDispSeen} fvgSeen={sweepFvgSeen}(sz={fvgSize:F1}pts)");
 
-					if (isChoch && isDisplace && hasFvg)
+					if (isChoch && sweepDispSeen && sweepFvgSeen)
 					{
-						// Bias: bloquear si gap overnight está explícitamente en contra
 						if (dailyBiasDir == 1)
-						{
-							Print($"[BIAS] Sesgo overnight BULL → setup SHORT bloqueado");
-							sweepState15m = 0; return;
-						}
+						{ Print("[BIAS] Sesgo overnight BULL -> SHORT bloqueado"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
-						// Trade Score
-						int score = CalcTradeScore(-1, true, isDisplace, fvgSize, true);
+						int score = CalcTradeScore(-1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
-						{
-							Print($"[SCORE] {score}/100 < {MinTradeScore} → setup descartado");
-							sweepState15m = 0; return;
-						}
+						{ Print($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
-						// Stop estructural
 						if (MaxStructuralRiskUsd > 0)
 						{
-							double entryEst   = fvgL;
-							double stopLevel  = sweepLevel15m + StopBufferTicks * TickSize;
-							double stopDist   = Math.Abs(entryEst - stopLevel);
-							double ptVal      = Instrument.MasterInstrument.PointValue;
-							double structRisk = stopDist * ptVal * Contratos;
+							double stopDist  = Math.Abs(sweepFvgL - (sweepLevel15m + StopBufferTicks * TickSize));
+							double structRisk = stopDist * Instrument.MasterInstrument.PointValue * Contratos;
 							if (structRisk > MaxStructuralRiskUsd)
-							{
-								Print($"[STRUCT] Riesgo estructural {structRisk:C} > {MaxStructuralRiskUsd:C} → skip");
-								sweepState15m = 0; return;
-							}
+							{ Print($"[STRUCT] Riesgo {structRisk:C} > {MaxStructuralRiskUsd:C} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 						}
 
 						lastTradeScore = score;
-						double invalidLvl = sweepLevel15m + StopBufferTicks * TickSize;
-						ArmSetup(-1, fvgL, fvgU, invalidLvl);
-						sweepState15m = 0;
-						Print($"[SETUP-A] SHORT armado. Score={score} Bias={dailyBiasDir}");
+						ArmSetup(-1, sweepFvgL, sweepFvgU, sweepLevel15m + StopBufferTicks * TickSize);
+						sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false;
+						Print($"[SETUP-A] SHORT armado. Score={score} FVG=[{sweepFvgL:F1},{sweepFvgU:F1}]");
 					}
 				}
 			}
@@ -1507,6 +1487,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 			sweepState15m       = 0;
 			levelBrokenLow15m   = false;
 			levelBrokenHigh15m  = false;
+			sweepDispSeen       = false;
+			sweepFvgSeen        = false;
+			sweepFvgL           = 0;
+			sweepFvgU           = 0;
 			_loggedTrendZero    = false;
 			_loggedDailyBias    = false;
 			preMarketHigh       = double.MinValue;
