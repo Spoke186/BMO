@@ -361,13 +361,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ProfitTargetUsd      = 700;   // target fijo MNQ: 700 pts / NQ: 70 pts (~1:3 RR)
 				SwingStrength15m     = 3;
 				SwingStrength1m      = 2;
-				DisplacementAtrMult  = 0.5;   // permisivo para primer backtest; subir a 0.8/1.0/1.5 al confirmar
-				DisplacementBodyPct  = 0.25;  // 25% del rango: casi cualquier vela con cuerpo pasa
-				MinFvgPoints         = 1.0;   // 1 pt NQ = 4 ticks; muy permisivo para ver cuantos setups hay
-				RejectionWickRatio   = 0.4;   // mecha >= 40% del rango
-				FvgValidBars         = 90;    // 1m bars = 1.5h para retroceso al FVG
-				FvgMitigationPct     = 0.75;  // cancelar solo si >75% rellenado (mas permisivo)
-				SweepChochMaxBars15m = 16;    // 16 barras 15m = 4h para ver CHoCH; tuning: reducir a 8
+				DisplacementAtrMult  = 0.2;   // max permisivo: casi cualquier barra cuenta como displacement
+				DisplacementBodyPct  = 0.10;  // 10% body: minimo para excluir dojis puros
+				MinFvgPoints         = 0.25;  // 1 tick NQ: cualquier gap cuenta
+				RejectionWickRatio   = 0.3;   // 30% mecha: facil de alcanzar en 1m
+				FvgValidBars         = 120;   // 2h para retroceso al FVG (mas tiempo = mas entradas)
+				FvgMitigationPct     = 0.90;  // cancelar solo si >90% rellenado
+				SweepChochMaxBars15m = 24;    // 6h para CHoCH (cubre toda la sesion NY)
 				StopBufferTicks      = 2;
 				EnableSetupB         = false; // spec v2: sin sweeps directos sin FVG/iFVG
 				MinSweepTicks        = 6;
@@ -383,17 +383,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 				Allow2ndTradeIfWinner = false; // spec v2: 1 trade/dia por defecto
 				EnableEmaFilter      = false;
 				MinPreMarketRange    = 0.0;
-				MinTradeScore        = 50;    // 50 para ver trades; subir a 65/70/80 al confirmar señales
-				BiasOvernightThreshold = 0;   // 0=sin filtro bias (backtest inicial); activar con 25-50 pts
-				                             // al confirmar que prevDayClose1 se carga bien en backtest
-				MaxStructuralRiskUsd = 0;     // 0=sin filtro estructural (recomendado para backtest inicial)
-				                             // NQ 2 cts: $250 → solo 6.25 pts distancia (demasiado estricto)
-				                             // MNQ 2 cts: $250 → 62.5 pts distancia (razonable → activar)
+				MinTradeScore        = 35;    // minimo: aceptar casi todo para ver frecuencia real
+				BiasOvernightThreshold = 0;
+				MaxStructuralRiskUsd = 0;
 				EnableSetupD         = false;
 				EnableSetupE         = false;
-				EnableFileLog        = false;
+				EnableFileLog        = true;  // log a archivo activado por defecto para diagnostico
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia EDT)
-				KillZoneEnd          = 1130;  // 11:30 ET = Colombia 10:30 (EDT)
+				KillZoneEnd          = 1200;  // 12:00 ET — 30 min extra = mas oportunidades
 				ForcedExit           = 1400;  // 14:00 ET (13:00 Colombia) — bloquea nuevas entradas
 				StartingBalance      = 50000;
 				TrailingDrawdown     = 2500;
