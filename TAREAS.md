@@ -113,7 +113,17 @@ N6 (PC-LIVE) ─► B5, C4
 
 ---
 
-## E. Acción inmediata (sesión 13)
+## E0. Acción inmediata (sesión 14) — FLUJO ÚNICO Setup A
+- **Decisión operador:** proyecto cerrado a **un solo flujo = Setup A**. `EnableSetupB=false` y
+  `EnableSetupC=false` por default (código intacto). **Reto A vs B CERRADO** (§F, histórico).
+- **Esteban (A):** EA-14 correr **A aislada** (B/C off) NQ 1m ETH con **NinjaScript Output abierto**
+  → identificar el gate que mata a A (trend / sweep / CHoCH+disp+FVG misma barra 15m / confirmación 1m)
+  → reportar el log. Luego aflojar ESE gate (params solo; lógica del `.cs` = coordinar con Sergio).
+- **Sergio:** AVISO — su Setup B queda **apagado** (dormido, no borrado). Coordinar si A necesita
+  cambio de lógica en el `.cs`.
+- **Meta A:** ~8-10 trades/mes a ~65-70% WR ≈ $3.000 (baja frecuencia → exige WR alto; a probar).
+
+## E. Acción inmediata (sesión 13 — HISTÓRICO, superado por E0)
 - **Reto Setup A vs B — A y B CONECTADOS** (como los diseñó Sergio; no se aíslan). Cada uno tunea los
   params de SU setup sobre el run combinado; A13 muestra la contribución de cada uno. Meta y tareas en **§F**.
 - **Esteban (Setup A):** EA1 compilar+correr en NT8 (F5) la estrategia mergeada (#28) — catch-up.
@@ -125,9 +135,14 @@ N6 (PC-LIVE) ─► B5, C4
 
 ---
 
-## F. Reto Setup A vs B — bot que logre **≥ $3.000 / mes** (sesión 13)
+## F. Reto Setup A vs B — bot que logre **≥ $3.000 / mes** (sesión 13) · ❌ CERRADO (sesión 14)
 
-> Alineado a la estrategia mergeada `ApexNqIctStrategy.cs` (#28 de Sergio). El objetivo es decidir,
+> **CERRADO en sesión 14:** el operador decidió **flujo único = Setup A** (no se compara A vs B).
+> Lo de abajo queda como histórico. El reto fue resuelto de facto por la data: B solo daba $3.150/mes
+> pero A no disparaba (pre-emptido por B + cadena 15m restrictiva). Decisión: quedarse con A (calidad)
+> y trabajarlo. La nueva meta operativa de A está en **§E0**.
+
+> Alineado a la estrategia mergeada `ApexNqIctStrategy.cs` (#28 de Sergio). El objetivo era decidir,
 > con datos, **cuál setup (A o B) rinde mejor** y dejar el bot tuneado para el profit goal Apex.
 
 ### Meta compartida (criterios de éxito del backtest)
