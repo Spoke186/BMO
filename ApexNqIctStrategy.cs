@@ -195,6 +195,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[Display(Name = "Stop estructural maximo (USD, 0=sin limite)", Order = 38, GroupName = "4. Riesgo Apex")]
 		[Range(0, 10000)]
 		public double MaxStructuralRiskUsd { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Escribir diagnostico a archivo", Order = 39, GroupName = "9. Debug")]
+		public bool EnableFileLog { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -334,6 +338,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private bool   sweepFvgSeen;
 		private double sweepFvgL;
 		private double sweepFvgU;
+		private System.IO.StreamWriter _logWriter;
 		#endregion
 
 		protected override void OnStateChange()
@@ -386,6 +391,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				                             // MNQ 2 cts: $250 → 62.5 pts distancia (razonable → activar)
 				EnableSetupD         = false;
 				EnableSetupE         = false;
+				EnableFileLog        = false;
 				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia EDT)
 				KillZoneEnd          = 1130;  // 11:30 ET = Colombia 10:30 (EDT)
 				ForcedExit           = 1400;  // 14:00 ET (13:00 Colombia) — bloquea nuevas entradas
@@ -410,6 +416,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ema21_15m        = EMA(BarsArray[1], 21);
 				ema20_daily      = EMA(BarsArray[2], 20);
 				accountHighWater = StartingBalance;
+				Print("=== ApexNqIctStrategy v3-LATCH LOADED === (compile OK)");
+				if (EnableFileLog)
+				{
+					string logPath = System.IO.Path.Combine(@"C:\Users\Sergio\BMO\resultados", "backtest_diag.txt");
+					_logWriter = new System.IO.StreamWriter(logPath, false) { AutoFlush = true };
+					_logWriter.WriteLine($"=== ApexNqIctStrategy v3-LATCH | {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+				}
 			}
 			else if (State == State.Realtime)
 			{
@@ -425,6 +438,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			}
 			else if (State == State.Terminated)
 			{
+				_logWriter?.Flush();
+				_logWriter?.Dispose();
+				_logWriter = null;
 				alerts?.SendAsync(TelegramAlerts.Msg.BotStop);
 				pnlTracker?.Save();
 			}
@@ -501,7 +517,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						string bl = dailyBiasDir == 1 ? "BULL" : dailyBiasDir == -1 ? "BEAR" : "NEUTRAL";
 						Print($"[BIAS-ON] PM_close={preMarketLastClose:F0} Ayer={prevDayClose1:F0} gap={gap:+0;-0} → {bl}");
 					}
-					Print($"[PRE-AP] Range 1m {PreMarketStartTime}–{KillZoneStart} ET [{preMarketLow:F2}, {preMarketHigh:F2}]");
+					L($"[PRE-AP] Range 1m {PreMarketStartTime}–{KillZoneStart} ET [{preMarketLow:F2}, {preMarketHigh:F2}]");
 				}
 				else if (t >= KillZoneStart * 100 && !preMarketAttempted)
 				{
@@ -523,13 +539,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 					if (preMarketHigh > double.MinValue)
 					{
 						preMarketReady = true;
-						Print($"[PRE-AP] Range 15m fallback [{preMarketLow:F2}, {preMarketHigh:F2}]");
+						L($"[PRE-AP] Range 15m fallback [{preMarketLow:F2}, {preMarketHigh:F2}]");
 					}
 					else
 					{
 						// Sin datos overnight (RTH puro o contrato sin historia premarket).
 						// TryDetectSetup15m usara la primera barra 15m del kill zone como Opening Range.
-						Print("[PRE-AP] Sin datos premarket. Esperando Opening Range (primera barra 15m kill zone).");
+						L("[PRE-AP] Sin datos premarket. Esperando Opening Range (primera barra 15m kill zone).");
 					}
 				}
 			}
@@ -679,7 +695,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private void TryDetectSetup15m()
 		{
 			// DIAGNOSTICO: imprimir estado de todos los gates en cada barra 15m
-			Print($"[DIAG-15m] {Times[1][0]:MM/dd HH:mm} setup={setupState} traded={tradedToday} disabled={tradingDisabled} near={nearDrawdown} bridgeON={ApexBridgeState.TradingEnabled} pmReady={preMarketReady} sweepSt={sweepState15m} trend={trend} pmL={preMarketLow:F0} pmH={preMarketHigh:F0}");
+			L($"[DIAG-15m] {Times[1][0]:MM/dd HH:mm} setup={setupState} traded={tradedToday} disabled={tradingDisabled} near={nearDrawdown} bridgeON={ApexBridgeState.TradingEnabled} pmReady={preMarketReady} sweepSt={sweepState15m} trend={trend} pmL={preMarketLow:F0} pmH={preMarketHigh:F0}");
 
 			if (setupState == 1 || tradedToday || tradingDisabled || nearDrawdown) return;
 			if (!ApexBridgeState.TradingEnabled) return;
@@ -695,7 +711,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 					preMarketHigh  = Highs[1][0];
 					preMarketLow   = Lows[1][0];
 					preMarketReady = true;
-					Print($"[PRE-OR] Opening Range hasta {Times[1][0]:HH:mm}: L={preMarketLow:F0} H={preMarketHigh:F0}");
+					L($"[PRE-OR] Opening Range hasta {Times[1][0]:HH:mm}: L={preMarketLow:F0} H={preMarketHigh:F0}");
 				}
 			}
 			if (!preMarketReady) return;
@@ -725,7 +741,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 					if (!levelBrokenLow15m && Lows[1][0] < preMarketLow)
 					{
 						levelBrokenLow15m = true;
-						Print($"[SWEEP-A] Low 15m perforado @ {Times[1][0]:HH:mm} nivel={preMarketLow:F2} low={Lows[1][0]:F2}");
+						L($"[SWEEP-A] Low 15m perforado @ {Times[1][0]:HH:mm} nivel={preMarketLow:F2} low={Lows[1][0]:F2}");
 					}
 					if (levelBrokenLow15m && Closes[1][0] > preMarketLow)
 					{
@@ -736,7 +752,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						levelBrokenLow15m = false;
 						levelBrokenHigh15m = false; // cancelar lado contrario
 						if (trend == 0) trend = 1;  // fijar dirección provisional
-						Print($"[SWEEP-A] Barrida LOW confirmada @ {Times[1][0]:HH:mm}. Dir→LONG. Buscando CHoCH...");
+						L($"[SWEEP-A] Barrida LOW confirmada @ {Times[1][0]:HH:mm}. Dir→LONG. Buscando CHoCH...");
 					}
 				}
 				if (tryShort && sweepState15m == 0) // solo si no se disparó ya el long
@@ -744,7 +760,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 					if (!levelBrokenHigh15m && Highs[1][0] > preMarketHigh)
 					{
 						levelBrokenHigh15m = true;
-						Print($"[SWEEP-A] High 15m perforado @ {Times[1][0]:HH:mm} nivel={preMarketHigh:F2} high={Highs[1][0]:F2}");
+						L($"[SWEEP-A] High 15m perforado @ {Times[1][0]:HH:mm} nivel={preMarketHigh:F2} high={Highs[1][0]:F2}");
 					}
 					if (levelBrokenHigh15m && Closes[1][0] < preMarketHigh)
 					{
@@ -755,7 +771,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						levelBrokenHigh15m = false;
 						levelBrokenLow15m  = false; // cancelar lado contrario
 						if (trend == 0) trend = -1; // fijar dirección provisional
-						Print($"[SWEEP-A] Barrida HIGH confirmada @ {Times[1][0]:HH:mm}. Dir→SHORT. Buscando CHoCH...");
+						L($"[SWEEP-A] Barrida HIGH confirmada @ {Times[1][0]:HH:mm}. Dir→SHORT. Buscando CHoCH...");
 					}
 				}
 			}
@@ -763,7 +779,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				if ((CurrentBars[1] - sweepBar15m) > SweepChochMaxBars15m)
 				{
-					Print($"[SWEEP-A] CHoCH timeout @ {Times[1][0]:HH:mm}. Resetando.");
+					L($"[SWEEP-A] CHoCH timeout @ {Times[1][0]:HH:mm}. Resetando.");
 					sweepState15m = 0;
 					sweepDispSeen = false; sweepFvgSeen = false; sweepFvgL = 0; sweepFvgU = 0;
 					return;
@@ -790,7 +806,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						             && body > 0 && (body / range) >= DisplacementBodyPct)
 						{
 							sweepDispSeen = true;
-							Print($"[DISP-A] Long displacement latcheado body={body:F1} rng={range:F1}");
+							L($"[DISP-A] Long displacement latcheado body={body:F1} rng={range:F1}");
 						}
 					}
 
@@ -829,8 +845,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 					bool isChoch = Closes[1][0] > chochLevel;
 					double fvgSize = sweepFvgSeen ? sweepFvgU - sweepFvgL : 0;
 
-					Print($"[CHoCH-A] Long choch={isChoch}(C={Closes[1][0]:F0}>{chochLevel:F0}) " +
-					      $"dispSeen={sweepDispSeen} fvgSeen={sweepFvgSeen}(sz={fvgSize:F1}pts)");
+					L($"[CHoCH-A] Long choch={isChoch}(C={Closes[1][0]:F0}>{chochLevel:F0}) " +
+					  $"dispSeen={sweepDispSeen} fvgSeen={sweepFvgSeen}(sz={fvgSize:F1}pts)");
 
 					if (isChoch && sweepDispSeen && sweepFvgSeen)
 					{
@@ -839,7 +855,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 						int score = CalcTradeScore(1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
-						{ Print($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						if (MaxStructuralRiskUsd > 0)
 						{
@@ -852,7 +868,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						lastTradeScore = score;
 						ArmSetup(1, sweepFvgL, sweepFvgU, sweepLevel15m - StopBufferTicks * TickSize);
 						sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false;
-						Print($"[SETUP-A] LONG armado. Score={score} FVG=[{sweepFvgL:F1},{sweepFvgU:F1}]");
+						L($"[SETUP-A] LONG armado. Score={score} FVG=[{sweepFvgL:F1},{sweepFvgU:F1}]");
 					}
 				}
 				else // trend == -1: CHoCH bajista en 15m
@@ -873,7 +889,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						             && body > 0 && (body / range) >= DisplacementBodyPct)
 						{
 							sweepDispSeen = true;
-							Print($"[DISP-A] Short displacement latcheado body={body:F1} rng={range:F1}");
+							L($"[DISP-A] Short displacement latcheado body={body:F1} rng={range:F1}");
 						}
 					}
 
@@ -912,8 +928,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 					bool isChoch = Closes[1][0] < chochLevel;
 					double fvgSize = sweepFvgSeen ? sweepFvgU - sweepFvgL : 0;
 
-					Print($"[CHoCH-A] Short choch={isChoch}(C={Closes[1][0]:F0}<{chochLevel:F0}) " +
-					      $"dispSeen={sweepDispSeen} fvgSeen={sweepFvgSeen}(sz={fvgSize:F1}pts)");
+					L($"[CHoCH-A] Short choch={isChoch}(C={Closes[1][0]:F0}<{chochLevel:F0}) " +
+					  $"dispSeen={sweepDispSeen} fvgSeen={sweepFvgSeen}(sz={fvgSize:F1}pts)");
 
 					if (isChoch && sweepDispSeen && sweepFvgSeen)
 					{
@@ -922,7 +938,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 						int score = CalcTradeScore(-1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
-						{ Print($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						if (MaxStructuralRiskUsd > 0)
 						{
@@ -935,7 +951,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 						lastTradeScore = score;
 						ArmSetup(-1, sweepFvgL, sweepFvgU, sweepLevel15m + StopBufferTicks * TickSize);
 						sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false;
-						Print($"[SETUP-A] SHORT armado. Score={score} FVG=[{sweepFvgL:F1},{sweepFvgU:F1}]");
+						L($"[SETUP-A] SHORT armado. Score={score} FVG=[{sweepFvgL:F1},{sweepFvgU:F1}]");
 					}
 				}
 			}
@@ -1467,6 +1483,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 		#endregion
 
 		#region Riesgo Apex (aproximaciones locales)
+		private void L(string msg) { Print(msg); _logWriter?.WriteLine(msg); }
+
 		private void ResetForNewSession()
 		{
 			// Guardar PDH/PDL de la sesion que cierra antes de resetear el rango.
