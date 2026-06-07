@@ -59,7 +59,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		[NinjaScriptProperty]
 		[Display(Name = "Rechazo 1m (mecha / cuerpo ratio)", Order = 8, GroupName = "2. Estrategia")]
-		[Range(0.5, 10)]
+		[Range(0.1, 10)]
 		public double RejectionWickRatio { get; set; }
 
 		[NinjaScriptProperty]
@@ -153,10 +153,59 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Permitir 2do trade si el primero fue ganador", Order = 29, GroupName = "2. Estrategia")]
 		public bool Allow2ndTradeIfWinner { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Filtro EMA tendencia 15m (EMA9 vs EMA21, dirección probable)", Order = 30, GroupName = "2. Estrategia")]
+		public bool EnableEmaFilter { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Rango pre-mercado minimo (pts, 0=desactivado)", Order = 31, GroupName = "2. Estrategia")]
+		[Range(0, 500)]
+		public double MinPreMarketRange { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Displacement: cuerpo minimo (fraccion del rango)", Order = 32, GroupName = "2. Estrategia")]
+		[Range(0.1, 1.0)]
+		public double DisplacementBodyPct { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Trade Score minimo para entrar (0-100)", Order = 33, GroupName = "2. Estrategia")]
+		[Range(0, 100)]
+		public int MinTradeScore { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "FVG: mitigacion maxima valida (fraccion 0-1)", Order = 34, GroupName = "2. Estrategia")]
+		[Range(0.1, 1.0)]
+		public double FvgMitigationPct { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Bias overnight: umbral gap (pts, 0=desactivado)", Order = 35, GroupName = "2. Estrategia")]
+		[Range(0, 500)]
+		public double BiasOvernightThreshold { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Habilitar Setup D (FVG 15m sin barrida previa)", Order = 36, GroupName = "2. Estrategia")]
+		public bool EnableSetupD { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Habilitar Setup E (Opening Range Breakout)", Order = 37, GroupName = "2. Estrategia")]
+		public bool EnableSetupE { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Stop estructural maximo (USD, 0=sin limite)", Order = 38, GroupName = "4. Riesgo Apex")]
+		[Range(0, 10000)]
+		public double MaxStructuralRiskUsd { get; set; }
 		#endregion
 
 		#region Estado interno
 		private ATR atr15m;
+		private EMA    ema9_15m;       // EMA rapida 15m (usada si EnableEmaFilter=true)
+		private EMA    ema21_15m;      // EMA lenta 15m
+		private EMA    ema20_daily;    // EMA20 diaria (inicializada pero no usada para bias — muy lenta)
+		// Sesgo diario: comparar cierre de ayer vs anteayer — responde en 1 dia al cambio de tendencia.
+		// Enero alcista: ayer > anteayer casi todos los dias → BULL. Febrero bajista: lo contrario → BEAR.
+		private double prevDayClose1;  // cierre RTH de ayer (actualizado cuando barra diaria cierra)
+		private double prevDayClose2;  // cierre RTH de anteayer
 
 		// Estructura 15m: pivotes para sesgo y referencia de CHoCH
 		private readonly List<double> swingHighs15m = new List<double>();
@@ -183,14 +232,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private bool   levelBrokenLow15m; // true si ya perforamos preMarketLow (sweep multi-barra)
 		private bool   levelBrokenHigh15m;// true si ya perforamos preMarketHigh (sweep multi-barra)
 
-		// Latches de confluencia A (desacople sesion 14). El log probo que CHoCH, displacement
-		// y FVG llegan desfasados 1-2 barras 15m y casi nunca coincidian en la MISMA barra ->
-		// Setup A armaba ~0. Ahora se latchea cada confirmacion dentro de la ventana post-sweep
-		// y se arma cuando las tres ya ocurrieron (siguen exigiendose las tres = misma calidad).
-		private bool   sweepDispSeen;    // hubo barra de displacement desde la barrida
-		private bool   sweepFvgSeen;     // hubo FVG valido desde la barrida
-		private double sweepFvgL, sweepFvgU; // bordes del ultimo FVG valido latcheado
-
 		// Setup armado (FVG 15m identificado, esperando retroceso + confirmacion 1m)
 		// 0 = sin setup, 1 = setup activo
 		private int    setupState;
@@ -211,6 +252,24 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double obLow;
 		private int    obDir;     // 1=long, -1=short
 		private int    obBar;     // CurrentBars[0] cuando se identifico el OB
+
+		// Setup D: FVG 15m alineado con sesgo diario (EMA20 daily) — sin prereq de sweep.
+		// Bullish: FVG alcista en 15m + precio baja al gap → LONG (mercado sobre EMA20 daily).
+		// Bearish: FVG bajista en 15m + precio sube al gap → SHORT (mercado bajo EMA20 daily).
+		private int    fvgDState;   // 0=escaneando, 1=FVG identificado esperando retroceso
+		private double fvgDUpper;
+		private double fvgDLower;
+		private int    fvgDDir;     // 1=long, -1=short
+		private int    fvgDBar;     // CurrentBars[1] (15m) cuando se detecto el FVG
+		private bool   fvgDPriceIn; // precio ya toco la zona
+
+		// Setup E: Opening Range Breakout — funciona en CUALQUIER mercado.
+		// 9:30-10:00 ET: registra el rango de apertura. Despues: entra si precio rompe
+		// en la direccion del sesgo diario (alcista → long breakout, bajista → short breakout).
+		private double orHigh      = double.MinValue;
+		private double orLow       = double.MaxValue;
+		private bool   orReady;       // true despues de 10:00 ET (rango bloqueado)
+		private bool   orTriggered;   // ya se entro con Setup E hoy
 
 		// Sesgo diario: cierre de la sesion anterior para determinar direccion del dia.
 		private double prevSessionClose;
@@ -245,7 +304,29 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double prevDayHigh;
 		private double prevDayLow;
 		private bool   prevDayReady;
+		// lastRthClose: ultimo cierre RTH real (16:15 ET) — usado por bias filter.
+		// prevSessionClose=Close[1] captura el cierre Globex (incorrecto para bias diario).
+		private double lastRthClose;
 		private bool   allowedSecondTrade; // true si ya se permitio el 2do trade hoy
+
+		// Bias overnight: cierre ultimo bar pre-mercado para calcular gap vs cierre RTH ayer.
+		// 1=bull (gap >+threshold), -1=bear (gap <-threshold), 0=neutral.
+		private double preMarketLastClose;
+		private int    dailyBiasDir;
+
+		// Bias 4H: direccion de las barras de 4 horas (spec §7: Daily+4H+15M deben alinear).
+		// 1=bull, -1=bear, 0=neutral (persiste entre sesiones — no resetear diariamente).
+		private int    fourHBiasDir;
+
+		// VWAP: pendiente v3 (tipo no nativo en todas las instalaciones NT8).
+		// Score sin VWAP: max 95 pts, umbral 80 sigue alcanzable.
+
+		// Guardia de drawdown: true si el equity disponible < 1 SL del limite trailing DD.
+		// Bloquea nuevas entradas sin apagar el bot (no es tradingDisabled).
+		private bool   nearDrawdown;
+
+		// Score del ultimo setup armado (para log y debugging).
+		private int lastTradeScore;
 		#endregion
 
 		protected override void OnStateChange()
@@ -262,50 +343,65 @@ namespace NinjaTrader.NinjaScript.Strategies
 				BarsRequiredToTrade  = 20;
 				IncludeCommission    = true;
 
+				// Tamano de posicion y riesgo (spec v2: 2 contratos fijos, $250 stop / $700 target)
 				Contratos            = 2;
-				StopLossUsd          = 250;
-				ProfitTargetUsd      = 700;
+				StopLossUsd          = 250;   // riesgo fijo MNQ: 250 pts / NQ: 25 pts
+				ProfitTargetUsd      = 700;   // target fijo MNQ: 700 pts / NQ: 70 pts (~1:3 RR)
 				SwingStrength15m     = 3;
 				SwingStrength1m      = 2;
-				DisplacementAtrMult  = 0.6;   // cuerpo >= 0.6 × ATR15m (aflojado p/ activar Setup A / FVG)
-				MinFvgPoints         = 2.0;   // gap minimo 2 pts NQ (aflojado p/ que el FVG arme mas seguido)
-				RejectionWickRatio   = 1.5;
-				FvgValidBars         = 90;    // 1m bars (~1.5h): mas ventana de retroceso → A llena en vez de bloquear a B
-				SweepChochMaxBars15m = 12;    // 12 barras 15m = 3h sweep→CHoCH (aflojado p/ activar Setup A)
+				DisplacementAtrMult  = 0.5;   // permisivo para primer backtest; subir a 0.8/1.0/1.5 al confirmar
+				DisplacementBodyPct  = 0.25;  // 25% del rango: casi cualquier vela con cuerpo pasa
+				MinFvgPoints         = 1.0;   // 1 pt NQ = 4 ticks; muy permisivo para ver cuantos setups hay
+				RejectionWickRatio   = 0.4;   // mecha >= 40% del rango
+				FvgValidBars         = 90;    // 1m bars = 1.5h para retroceso al FVG
+				FvgMitigationPct     = 0.75;  // cancelar solo si >75% rellenado (mas permisivo)
+				SweepChochMaxBars15m = 16;    // 16 barras 15m = 4h para ver CHoCH; tuning: reducir a 8
 				StopBufferTicks      = 2;
-				// FLUJO UNICO = Setup A (FVG). Decision operador sesion 14 (2026-06-07): el proyecto
-				// se cierra a un solo setup, el de mayor calidad (confluencia 15m). B y C quedan
-				// APAGADOS por default (codigo intacto, reactivable poniendo el Input en true).
-				// Consecuencia: A hoy dispara ~0; el siguiente trabajo es aflojar A para que produzca.
-				EnableSetupB         = false;
-				MinSweepTicks        = 4;     // sweep minimo: 4 ticks = 1 pt NQ (calidad: filtra barridos de ruido)
-				MinBodyTicks         = 2;     // cuerpo minimo: 2 ticks = 0.5 pt NQ
-				SetupBRequiresTrend     = false; // bias filter (dia alcista/bajista) ya filtra la direccion
-				EnableDailyBiasFilter   = true;  // ON: solo a favor del sesgo diario. Load-bearing p/ WR (sin esto shorts dieron 0/10)
-				PreMarketStartTime   = 800;   // rango pre-mercado: 8:00–9:30 ET (pre-market US)
-				SetupBMaxMinutes     = 0;     // 0 = toda la kill zone (9:30-11:00 ET)
-				EnableSetupC         = false; // OB solo sin sweep = sin validacion → off por defecto
-				MinOBBodyTicks       = 20;    // desplazamiento minimo: 20 ticks = 5 pts NQ
-				OBValidBars          = 45;    // OB valido por 45 barras 1m = 45 min
-				EnablePdhPdl         = true;  // PDH/PDL: niveles de liquidez adicionales para Setup B
-				Allow2ndTradeIfWinner = true;  // 2do trade tras ganador → +frecuencia (reto 1/dia $3k/mes)
-				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia)
-				KillZoneEnd          = 1300;  // 13:00 ET: ventana extendida a media-manana p/ +trades B (additivo, busca +$500 a $3k)
-				ForcedExit           = 1400;  // 14:00 ET: bloquea nuevas entradas; posicion abierta corre a TP/SL
-				                             // (operador G3: "dejar que termine, 1 oportunidad/dia")
+				EnableSetupB         = false; // spec v2: sin sweeps directos sin FVG/iFVG
+				MinSweepTicks        = 6;
+				MinBodyTicks         = 6;
+				SetupBRequiresTrend  = false;
+				EnableDailyBiasFilter = false;
+				PreMarketStartTime   = 800;
+				SetupBMaxMinutes     = 0;
+				EnableSetupC         = false;
+				MinOBBodyTicks       = 20;
+				OBValidBars          = 45;
+				EnablePdhPdl         = true;
+				Allow2ndTradeIfWinner = false; // spec v2: 1 trade/dia por defecto
+				EnableEmaFilter      = false;
+				MinPreMarketRange    = 0.0;
+				MinTradeScore        = 50;    // 50 para ver trades; subir a 65/70/80 al confirmar señales
+				BiasOvernightThreshold = 0;   // 0=sin filtro bias (backtest inicial); activar con 25-50 pts
+				                             // al confirmar que prevDayClose1 se carga bien en backtest
+				MaxStructuralRiskUsd = 0;     // 0=sin filtro estructural (recomendado para backtest inicial)
+				                             // NQ 2 cts: $250 → solo 6.25 pts distancia (demasiado estricto)
+				                             // MNQ 2 cts: $250 → 62.5 pts distancia (razonable → activar)
+				EnableSetupD         = false;
+				EnableSetupE         = false;
+				KillZoneStart        = 930;   // 09:30 ET (08:30 Colombia EDT)
+				KillZoneEnd          = 1130;  // 11:30 ET = Colombia 10:30 (EDT)
+				ForcedExit           = 1400;  // 14:00 ET (13:00 Colombia) — bloquea nuevas entradas
 				StartingBalance      = 50000;
 				TrailingDrawdown     = 2500;
-				MaxDailyLoss         = 400;
+				MaxDailyLoss         = 250;   // spec v2: 1 perdida ($250) = stop el dia
 			}
 			else if (State == State.Configure)
 			{
-				// Serie primaria = 1m (gatillo de entrada en confirmacion).
-				// Serie secundaria = 15m (sesgo, barrida, CHoCH, FVG).
+				// [0] = 1m  (gatillo de entrada)
+				// [1] = 15m (sesgo, barrida, CHoCH, FVG)
+				// [2] = 1D  (cierre diario para bias overnight)
+				// [3] = 4H  (bias medio plazo — spec §7: Daily+4H+15M)
 				AddDataSeries(BarsPeriodType.Minute, 15);
+				AddDataSeries(BarsPeriodType.Day,    1);
+				AddDataSeries(BarsPeriodType.Minute, 240);
 			}
 			else if (State == State.DataLoaded)
 			{
 				atr15m           = ATR(BarsArray[1], 14);
+				ema9_15m         = EMA(BarsArray[1], 9);
+				ema21_15m        = EMA(BarsArray[1], 21);
+				ema20_daily      = EMA(BarsArray[2], 20);
 				accountHighWater = StartingBalance;
 			}
 			else if (State == State.Realtime)
@@ -332,10 +428,28 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (CurrentBars[0] < BarsRequiredToTrade || CurrentBars[1] < BarsRequiredToTrade)
 				return;
 
-			if (BarsInProgress == 1) // 15m: sesgo, swings, Setup A
+			// Capturar cierre diario CONFIRMADO cuando la barra diaria cierra (BarsInProgress==2).
+			// prevDayClose1/2 permiten detectar cambio de tendencia en 1 dia (no en 2-3 semanas como EMA20).
+			if (BarsInProgress == 2)
+			{
+				prevDayClose2 = prevDayClose1;
+				prevDayClose1 = Close[0];
+				string bias = prevDayClose1 > prevDayClose2 ? "BULL" : prevDayClose1 < prevDayClose2 ? "BEAR" : "NEUTRAL";
+				Print($"[DAILY] Cierre={prevDayClose1:F0} AntAyer={prevDayClose2:F0} → sesgo manana: {bias}");
+				return;
+			}
+
+			if (BarsInProgress == 3) // 4H: bias medio plazo (spec §7)
+			{
+				UpdateFourHBias();
+				return;
+			}
+
+			if (BarsInProgress == 1) // 15m: sesgo, swings, Setup A, Setup D
 			{
 				UpdateTrend15m();
 				TryDetectSetup15m();
+				if (EnableSetupD) TryDetectFvgD();
 				PublishState();
 				return;
 			}
@@ -362,19 +476,33 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				if (inWindow)
 				{
-					preMarketHigh = Math.Max(preMarketHigh, High[0]);
-					preMarketLow  = Math.Min(preMarketLow,  Low[0]);
+					preMarketHigh      = Math.Max(preMarketHigh, High[0]);
+					preMarketLow       = Math.Min(preMarketLow,  Low[0]);
+					preMarketLastClose = Close[0]; // guardar ultimo cierre antes de kill zone
 				}
 				else if (t >= KillZoneStart * 100 && preMarketHigh > double.MinValue)
 				{
 					preMarketReady = true;
-					Print($"[PRE-AP] {Time[0]:MM-dd} Range 1m {PreMarketStartTime}–{KillZoneStart} ET [{preMarketLow:F2}, {preMarketHigh:F2}]");
+					// Bias overnight: gap entre cierre pre-market y cierre RTH de ayer.
+					// >+threshold = alcista (solo longs), <-threshold = bajista (solo shorts), neutral = ambos.
+					if (BiasOvernightThreshold > 0 && preMarketLastClose > 0 && prevDayClose1 > 0)
+					{
+						double gap = preMarketLastClose - prevDayClose1;
+						if      (gap >  BiasOvernightThreshold) dailyBiasDir =  1;
+						else if (gap < -BiasOvernightThreshold) dailyBiasDir = -1;
+						else                                    dailyBiasDir =  0;
+						string bl = dailyBiasDir == 1 ? "BULL" : dailyBiasDir == -1 ? "BEAR" : "NEUTRAL";
+						Print($"[BIAS-ON] PM_close={preMarketLastClose:F0} Ayer={prevDayClose1:F0} gap={gap:+0;-0} → {bl}");
+					}
+					Print($"[PRE-AP] Range 1m {PreMarketStartTime}–{KillZoneStart} ET [{preMarketLow:F2}, {preMarketHigh:F2}]");
 				}
 				else if (t >= KillZoneStart * 100 && !preMarketAttempted)
 				{
-					// Sin barras 1m en la ventana (plantilla RTH). Fallback: escanear 15m.
+					// Sin barras 1m en ventana premarket (plantilla RTH o sin datos overnight).
+					// Fallback 1: buscar barras 15m en el rango 8:00-9:30.
+					// Fallback 2: si tampoco hay, usar las ultimas N barras 15m disponibles (RTH puro).
 					preMarketAttempted = true;
-					int scan = Math.Min(CurrentBars[1], 24); // hasta 6h de barras 15m
+					int scan = Math.Min(CurrentBars[1], 32); // hasta ~8h de barras 15m
 					for (int i = 0; i < scan; i++)
 					{
 						int t15 = ToTime(Times[1][i]);
@@ -392,16 +520,21 @@ namespace NinjaTrader.NinjaScript.Strategies
 					}
 					else
 					{
-						// Ambas series son RTH: sin niveles de liquidez para hoy.
-						// Usar plantilla ETH (Globex 24h) en Strategy Analyzer / grafico live.
-						Print($"[PRE-AP] {Time[0]:MM-dd} SIN datos overnight. Usar plantilla ETH. Sin setups hoy.");
+						// Sin datos overnight (RTH puro o contrato sin historia premarket).
+						// TryDetectSetup15m usara la primera barra 15m del kill zone como Opening Range.
+						Print("[PRE-AP] Sin datos premarket. Esperando Opening Range (primera barra 15m kill zone).");
 					}
 				}
 			}
 
-			// Acumular rango de sesion para PDH/PDL del dia siguiente.
-			sessionHigh = Math.Max(sessionHigh, High[0]);
-			sessionLow  = Math.Min(sessionLow,  Low[0]);
+			// Solo acumular RTH (9:30–16:15 ET) — PDH/PDL y lastRthClose son niveles RTH puro.
+			int tRth = ToTime(Time[0]);
+			if (tRth >= 93000 && tRth < 161500)
+			{
+				sessionHigh  = Math.Max(sessionHigh, High[0]);
+				sessionLow   = Math.Min(sessionLow,  Low[0]);
+				lastRthClose = Close[0]; // se actualiza cada bar RTH; al cerrar sesion queda el ultimo
+			}
 
 			UpdateRiskGuards();
 			RecordClosedTrades();
@@ -441,6 +574,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (EnableSetupB && preMarketReady && inKillZone
 			    && !tradedToday && !tradingDisabled && setupState == 0)
 				TryDetectSweepB();
+
+			// Setup D en 1m: entrar cuando precio retrocede al FVG detectado en 15m.
+			if (EnableSetupD && fvgDState == 1 && preMarketReady && inKillZone
+			    && !tradedToday && !tradingDisabled && setupState == 0)
+				TryEnterFvgD();
+
+			// Setup E: Opening Range Breakout.
+			if (EnableSetupE && inKillZone) TrySetupE();
 
 			// Setup C en 1m: Order Block — detectar desplazamiento institucional y
 			// entrar cuando el precio retorna a la ultima vela opuesta (OB).
@@ -507,35 +648,72 @@ namespace NinjaTrader.NinjaScript.Strategies
 		}
 		#endregion
 
+		#region Bias 4H (spec §7: Daily+4H+15M alineados)
+		// Compara el ultimo cierre 4H con el anterior. Simple y robusto para backtest.
+		// No se resetea diariamente — el sesgo 4H persiste hasta que cambia.
+		private void UpdateFourHBias()
+		{
+			if (CurrentBars[3] < 2) return;
+			double c0 = Closes[3][0];
+			double c1 = Closes[3][1];
+			int prev = fourHBiasDir;
+			if      (c0 > c1) fourHBiasDir =  1;
+			else if (c0 < c1) fourHBiasDir = -1;
+			else              fourHBiasDir =  0;
+			if (fourHBiasDir != prev)
+				Print($"[4H-BIAS] {prev} → {fourHBiasDir} c0={c0:F0} c1={c1:F0}");
+		}
+		#endregion
+
 		#region Deteccion de setup en 15m (barrida → CHoCH → FVG)
-		private bool _loggedTrendZero; // evita spam: loguea trend=0 solo 1 vez por sesion
+		private bool _loggedTrendZero;   // evita spam: loguea trend=0 solo 1 vez por sesion
+		private bool _loggedDailyBias;   // evita spam: loguea sesgo diario solo 1 vez por sesion
 
 		private void TryDetectSetup15m()
 		{
-			if (setupState == 1 || tradedToday || tradingDisabled) return;
+			// DIAGNOSTICO: imprimir estado de todos los gates en cada barra 15m
+			Print($"[DIAG-15m] {Times[1][0]:MM/dd HH:mm} setup={setupState} traded={tradedToday} disabled={tradingDisabled} near={nearDrawdown} bridgeON={ApexBridgeState.TradingEnabled} pmReady={preMarketReady} sweepSt={sweepState15m} trend={trend} pmL={preMarketLow:F0} pmH={preMarketHigh:F0}");
+
+			if (setupState == 1 || tradedToday || tradingDisabled || nearDrawdown) return;
 			if (!ApexBridgeState.TradingEnabled) return;
+
+			// Opening Range fallback: sin datos premarket (RTH / contrato sin historia overnight).
+			// Al cerrar la primera barra 15m del kill zone, usar su H/L como referencia de sweep.
+			// La primera barra DEFINE el OR; los sweeps se detectan a partir de la segunda (10:00+).
+			if (!preMarketReady && CurrentBars[1] >= 1)
+			{
+				int t15 = ToTime(Times[1][0]);
+				if (t15 >= KillZoneStart * 100 && t15 < KillZoneEnd * 100)
+				{
+					preMarketHigh  = Highs[1][0];
+					preMarketLow   = Lows[1][0];
+					preMarketReady = true;
+					Print($"[PRE-OR] Opening Range hasta {Times[1][0]:HH:mm}: L={preMarketLow:F0} H={preMarketHigh:F0}");
+				}
+			}
 			if (!preMarketReady) return;
 
-			if (trend == 0)
+			// trend=0 permitido: si preMarketReady, el sweep mismo define la dirección.
+			// Esto permite Setup A en plantillas RTH donde los swings 15m tardan 1-2h en formarse.
+			// trend=0 + sweep de low → dir provisionalmente 1; + sweep de high → dir -1.
+			if (trend == 0 && !_loggedTrendZero)
 			{
-				if (!_loggedTrendZero)
-				{
-					Print($"[SETUP-A] trend=0 en {Time[0]:HH:mm} — sin sesgo 15m, Setup A bloqueado hoy");
-					_loggedTrendZero = true;
-				}
-				return;
+				Print($"[SETUP-A] trend=0 @ {Times[1][0]:HH:mm} — usando premarket como referencia de estructura");
+				_loggedTrendZero = true;
 			}
-			_loggedTrendZero = false;
+			if (trend != 0) _loggedTrendZero = false;
 
 			double atrVal = atr15m[0];
 			if (atrVal <= 0) return;
 
 			if (sweepState15m == 0)
 			{
-				// Paso 2: barrida del rango pre-apertura en 15m (multi-barra).
-				// IMPORTANTE: usar Lows[1]/Highs[1]/Closes[1] = datos de la serie 15m,
-				// NO Low[0]/High[0]/Close[0] que son la serie primaria 1m.
-				if (trend == 1)
+				// Barrida: detectar en ambas direcciones si trend=0; solo en dirección del trend si !=0.
+				// La barrida que se confirme primero fija la dirección del setup.
+				bool tryLong  = trend >= 0; // trend=1 o trend=0
+				bool tryShort = trend <= 0; // trend=-1 o trend=0
+
+				if (tryLong)
 				{
 					if (!levelBrokenLow15m && Lows[1][0] < preMarketLow)
 					{
@@ -548,12 +726,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 						sweepBar15m       = CurrentBars[1];
 						sweepState15m     = 1;
 						levelBrokenLow15m = false;
-						sweepDispSeen     = false; // ventana de confluencia fresca por barrida
-						sweepFvgSeen      = false;
-						Print($"[SWEEP-A] Barrida LOW confirmada @ {Times[1][0]:HH:mm}. Buscando CHoCH...");
+						levelBrokenHigh15m = false; // cancelar lado contrario
+						if (trend == 0) trend = 1;  // fijar dirección provisional
+						Print($"[SWEEP-A] Barrida LOW confirmada @ {Times[1][0]:HH:mm}. Dir→LONG. Buscando CHoCH...");
 					}
 				}
-				else if (trend == -1)
+				if (tryShort && sweepState15m == 0) // solo si no se disparó ya el long
 				{
 					if (!levelBrokenHigh15m && Highs[1][0] > preMarketHigh)
 					{
@@ -566,9 +744,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 						sweepBar15m        = CurrentBars[1];
 						sweepState15m      = 1;
 						levelBrokenHigh15m = false;
-						sweepDispSeen      = false; // ventana de confluencia fresca por barrida
-						sweepFvgSeen       = false;
-						Print($"[SWEEP-A] Barrida HIGH confirmada @ {Times[1][0]:HH:mm}. Buscando CHoCH...");
+						levelBrokenLow15m  = false; // cancelar lado contrario
+						if (trend == 0) trend = -1; // fijar dirección provisional
+						Print($"[SWEEP-A] Barrida HIGH confirmada @ {Times[1][0]:HH:mm}. Dir→SHORT. Buscando CHoCH...");
 					}
 				}
 			}
@@ -578,8 +756,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 				{
 					Print($"[SWEEP-A] CHoCH timeout @ {Times[1][0]:HH:mm}. Resetando.");
 					sweepState15m = 0;
-					sweepDispSeen = false;
-					sweepFvgSeen  = false;
 					return;
 				}
 
@@ -587,71 +763,199 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				if (trend == 1) // CHoCH alcista en 15m
 				{
-					if (swingHighs15m.Count == 0) return;
-					double chochLevel = swingHighs15m[swingHighs15m.Count - 1];
+					// Fallback: sin swings aun (RTH template), usar el High de la barra de sweep como CHoCH.
+					// Romper ese high en barra posterior = CHoCH minimo valido + displacement confirma impulso.
+					double chochLevel;
+					int sweepOff = CurrentBars[1] - sweepBar15m;
+					if      (swingHighs15m.Count > 0) chochLevel = swingHighs15m[swingHighs15m.Count - 1];
+					else if (sweepOff > 0 && sweepOff < CurrentBars[1]) chochLevel = Highs[1][sweepOff];
+					else if (preMarketHigh > 0)       chochLevel = preMarketHigh;
+					else return;
 
-					double body     = Closes[1][0] - Opens[1][0];
+					// Displacement: verificar en bar[1] (barra de impulso que crea el FVG).
+					// bar[0] = confirmacion CHoCH (puede ser barra chica).
+					// bar[1] = impulso institucional (grande, crea el gap entre bar[2] y bar[0]).
+					// FVG = [High[bar2], Low[bar0]] — gap creado por el impulso en bar[1]. ← CORRECTO
+					// Si se verifica displacement en bar[0], Low[0] <= High[2] casi siempre (sweep en medio).
+					double body  = Math.Abs(Closes[1][1] - Opens[1][1]);
+					double range = Highs[1][1]  - Lows[1][1];
+					bool isDisplace = range > 0
+					               && range >= DisplacementAtrMult * atrVal
+					               && body > 0
+					               && (body / range) >= DisplacementBodyPct;
 					bool isChoch    = Closes[1][0] > chochLevel;
-					bool isDisplace = body > 0 && body >= DisplacementAtrMult * atrVal;
 
-					// FVG alcista (2 ventanas: [0]/[2] y [1]/[3]). Se LATCHEA: el gap suele
-					// aparecer en barra distinta a la del CHoCH (desfase probado en el log).
+					// FVG alcista: ventana doble de 3 barras (A=[2],[1],[0]; B=[3],[2],[1])
+					double fvgL = 0, fvgU = 0;
+					bool   hasFvg = false;
+					double fvgSize = 0;
 					if (CurrentBars[1] >= 3)
 					{
 						double uA = Lows[1][0], lA = Highs[1][2];
-						if (uA > lA && (uA - lA) >= MinFvgPoints) { sweepFvgL = lA; sweepFvgU = uA; sweepFvgSeen = true; }
+						if (uA > lA && (uA - lA) >= MinFvgPoints) { fvgL = lA; fvgU = uA; fvgSize = uA - lA; hasFvg = true; }
 					}
-					if (CurrentBars[1] >= 4)
+					if (!hasFvg && CurrentBars[1] >= 4)
 					{
 						double uB = Lows[1][1], lB = Highs[1][3];
-						if (uB > lB && (uB - lB) >= MinFvgPoints) { sweepFvgL = lB; sweepFvgU = uB; sweepFvgSeen = true; }
+						if (uB > lB && (uB - lB) >= MinFvgPoints) { fvgL = lB; fvgU = uB; fvgSize = uB - lB; hasFvg = true; }
 					}
-					if (isDisplace) sweepDispSeen = true;
 
-					Print($"[CHoCH-A] Long choch={isChoch}({Closes[1][0]:F0}>{chochLevel:F0}) dispSeen={sweepDispSeen}({body:F1}>={DisplacementAtrMult*atrVal:F1}) fvgSeen={sweepFvgSeen}");
-
-					// Desacople (sesion 14): armar cuando el CHoCH confirma Y ya ocurrieron
-					// displacement y FVG en la ventana post-sweep (no exige que sean la misma barra).
-					if (isChoch && sweepDispSeen && sweepFvgSeen)
+					// iFVG alcista: FVG bajista previo (en el downswing) reclamado por el CHoCH.
+					// Zona: [High(newest), Low(oldest)] del FVG bajista → ahora soporte.
+					if (!hasFvg && CurrentBars[1] >= 5)
 					{
+						for (int k = 1; k <= 5 && (k + 2) < CurrentBars[1]; k++)
+						{
+							double ifvgFloor = Highs[1][k];    // High del bar mas reciente del FVG bajista
+							double ifvgCeil  = Lows[1][k + 2]; // Low del bar mas antiguo
+							double iSize     = ifvgCeil - ifvgFloor;
+							if (iSize >= MinFvgPoints && Closes[1][0] > ifvgCeil)
+							{
+								fvgL = ifvgFloor; fvgU = ifvgCeil; fvgSize = iSize; hasFvg = true;
+								Print($"[iFVG-A] Long iFVG [{fvgL:F1},{fvgU:F1}] gap={iSize:F1}pts reclamado");
+								break;
+							}
+						}
+					}
+
+					Print($"[CHoCH-A] Long choch={isChoch}(C={Closes[1][0]:F0}>{chochLevel:F0}) " +
+					      $"disp={isDisplace}[bar-1](body={body:F1} rng={range:F1} need={DisplacementAtrMult*atrVal:F1}) " +
+					      $"fvg={hasFvg}([{Highs[1][2]:F0},{Lows[1][0]:F0}]={fvgSize:F1}pts)");
+
+					if (isChoch && isDisplace && hasFvg)
+					{
+						// Bias: bloquear si gap overnight está explícitamente en contra
+						if (dailyBiasDir == -1)
+						{
+							Print($"[BIAS] Sesgo overnight BEAR → setup LONG bloqueado");
+							sweepState15m = 0; return;
+						}
+
+						// Trade Score (spec v2 §18): minimo 80/100
+						int score = CalcTradeScore(1, true, isDisplace, fvgSize, true);
+						if (score < MinTradeScore)
+						{
+							Print($"[SCORE] {score}/100 < {MinTradeScore} → setup descartado");
+							sweepState15m = 0; return;
+						}
+
+						// Stop estructural: distancia desde FVG hasta sweep level
+						if (MaxStructuralRiskUsd > 0)
+						{
+							double entryEst  = fvgU; // precio de entrada estimado en borde FVG
+							double stopLevel = sweepLevel15m - StopBufferTicks * TickSize;
+							double stopDist  = Math.Abs(entryEst - stopLevel);
+							double ptVal     = Instrument.MasterInstrument.PointValue;
+							double structRisk = stopDist * ptVal * Contratos;
+							if (structRisk > MaxStructuralRiskUsd)
+							{
+								Print($"[STRUCT] Riesgo estructural {structRisk:C} > {MaxStructuralRiskUsd:C} → skip");
+								sweepState15m = 0; return;
+							}
+						}
+
+						lastTradeScore = score;
 						double invalidLvl = sweepLevel15m - StopBufferTicks * TickSize;
-						ArmSetup(1, sweepFvgL, sweepFvgU, invalidLvl);
+						ArmSetup(1, fvgL, fvgU, invalidLvl);
 						sweepState15m = 0;
-						sweepDispSeen = false;
-						sweepFvgSeen  = false;
+						Print($"[SETUP-A] LONG armado. Score={score} Bias={dailyBiasDir}");
 					}
 				}
 				else // trend == -1: CHoCH bajista en 15m
 				{
-					if (swingLows15m.Count == 0) return;
-					double chochLevel = swingLows15m[swingLows15m.Count - 1];
+					// Fallback: sin swings aun (RTH template), usar Low de la barra de sweep como CHoCH.
+					double chochLevel;
+					int sweepOff = CurrentBars[1] - sweepBar15m;
+					if      (swingLows15m.Count > 0) chochLevel = swingLows15m[swingLows15m.Count - 1];
+					else if (sweepOff > 0 && sweepOff < CurrentBars[1]) chochLevel = Lows[1][sweepOff];
+					else if (preMarketLow < double.MaxValue && preMarketLow > 0) chochLevel = preMarketLow;
+					else return;
 
-					double body     = Opens[1][0] - Closes[1][0];
+					// Displacement: verificar en bar[1] (barra de impulso que crea el FVG).
+					// bar[0] = confirmacion CHoCH, bar[1] = impulso institucional.
+					// FVG bajista = [High[bar0], Low[bar2]] — gap creado por bar[1].
+					double body  = Math.Abs(Opens[1][1] - Closes[1][1]);
+					double range = Highs[1][1]  - Lows[1][1];
+					bool isDisplace = range > 0
+					               && range >= DisplacementAtrMult * atrVal
+					               && body > 0
+					               && (body / range) >= DisplacementBodyPct;
 					bool isChoch    = Closes[1][0] < chochLevel;
-					bool isDisplace = body > 0 && body >= DisplacementAtrMult * atrVal;
 
-					// FVG bajista (2 ventanas), latcheado igual que el alcista.
+					// FVG bajista: ventana doble
+					double fvgL = 0, fvgU = 0;
+					bool   hasFvg = false;
+					double fvgSize = 0;
 					if (CurrentBars[1] >= 3)
 					{
 						double uA = Lows[1][2], lA = Highs[1][0];
-						if (uA > lA && (uA - lA) >= MinFvgPoints) { sweepFvgL = lA; sweepFvgU = uA; sweepFvgSeen = true; }
+						if (uA > lA && (uA - lA) >= MinFvgPoints) { fvgL = lA; fvgU = uA; fvgSize = uA - lA; hasFvg = true; }
 					}
-					if (CurrentBars[1] >= 4)
+					if (!hasFvg && CurrentBars[1] >= 4)
 					{
 						double uB = Lows[1][3], lB = Highs[1][1];
-						if (uB > lB && (uB - lB) >= MinFvgPoints) { sweepFvgL = lB; sweepFvgU = uB; sweepFvgSeen = true; }
+						if (uB > lB && (uB - lB) >= MinFvgPoints) { fvgL = lB; fvgU = uB; fvgSize = uB - lB; hasFvg = true; }
 					}
-					if (isDisplace) sweepDispSeen = true;
 
-					Print($"[CHoCH-A] Short choch={isChoch}({Closes[1][0]:F0}<{chochLevel:F0}) dispSeen={sweepDispSeen}({body:F1}>={DisplacementAtrMult*atrVal:F1}) fvgSeen={sweepFvgSeen}");
-
-					if (isChoch && sweepDispSeen && sweepFvgSeen)
+					// iFVG bajista: FVG alcista previo (en el upswing) reclamado por el CHoCH.
+					// Zona: [High(oldest), Low(newest)] del FVG alcista → ahora resistencia.
+					if (!hasFvg && CurrentBars[1] >= 5)
 					{
+						for (int k = 1; k <= 5 && (k + 2) < CurrentBars[1]; k++)
+						{
+							double ifvgFloor = Highs[1][k + 2]; // High del bar mas antiguo del FVG alcista
+							double ifvgCeil  = Lows[1][k];      // Low del bar mas reciente
+							double iSize     = ifvgCeil - ifvgFloor;
+							if (iSize >= MinFvgPoints && Closes[1][0] < ifvgFloor)
+							{
+								fvgL = ifvgFloor; fvgU = ifvgCeil; fvgSize = iSize; hasFvg = true;
+								Print($"[iFVG-A] Short iFVG [{fvgL:F1},{fvgU:F1}] gap={iSize:F1}pts reclamado");
+								break;
+							}
+						}
+					}
+
+					Print($"[CHoCH-A] Short choch={isChoch}(C={Closes[1][0]:F0}<{chochLevel:F0}) " +
+					      $"disp={isDisplace}[bar-1](body={body:F1} rng={range:F1} need={DisplacementAtrMult*atrVal:F1}) " +
+					      $"fvg={hasFvg}({fvgSize:F1}pts)");
+
+					if (isChoch && isDisplace && hasFvg)
+					{
+						// Bias: bloquear si gap overnight está explícitamente en contra
+						if (dailyBiasDir == 1)
+						{
+							Print($"[BIAS] Sesgo overnight BULL → setup SHORT bloqueado");
+							sweepState15m = 0; return;
+						}
+
+						// Trade Score
+						int score = CalcTradeScore(-1, true, isDisplace, fvgSize, true);
+						if (score < MinTradeScore)
+						{
+							Print($"[SCORE] {score}/100 < {MinTradeScore} → setup descartado");
+							sweepState15m = 0; return;
+						}
+
+						// Stop estructural
+						if (MaxStructuralRiskUsd > 0)
+						{
+							double entryEst   = fvgL;
+							double stopLevel  = sweepLevel15m + StopBufferTicks * TickSize;
+							double stopDist   = Math.Abs(entryEst - stopLevel);
+							double ptVal      = Instrument.MasterInstrument.PointValue;
+							double structRisk = stopDist * ptVal * Contratos;
+							if (structRisk > MaxStructuralRiskUsd)
+							{
+								Print($"[STRUCT] Riesgo estructural {structRisk:C} > {MaxStructuralRiskUsd:C} → skip");
+								sweepState15m = 0; return;
+							}
+						}
+
+						lastTradeScore = score;
 						double invalidLvl = sweepLevel15m + StopBufferTicks * TickSize;
-						ArmSetup(-1, sweepFvgL, sweepFvgU, invalidLvl);
+						ArmSetup(-1, fvgL, fvgU, invalidLvl);
 						sweepState15m = 0;
-						sweepDispSeen = false;
-						sweepFvgSeen  = false;
+						Print($"[SETUP-A] SHORT armado. Score={score} Bias={dailyBiasDir}");
 					}
 				}
 			}
@@ -663,13 +967,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 			fvgLower        = Instrument.MasterInstrument.RoundToTickSize(lower);
 			fvgUpper        = Instrument.MasterInstrument.RoundToTickSize(upper);
 			fvgInvalidPrice = Instrument.MasterInstrument.RoundToTickSize(invalidPrice);
-			fvgArmedBar     = CurrentBars[0]; // barra 1m en el momento de armar
+			fvgArmedBar     = CurrentBars[0];
 			priceInFvg      = false;
 			setupState      = 1;
 			swingHighs1m.Clear();
 			swingLows1m.Clear();
 
-			Print($"[SETUP] Dir={dir} FVG [{fvgLower:F2},{fvgUpper:F2}] Invalid={fvgInvalidPrice:F2}");
+			Print($"[SETUP] Dir={dir} FVG [{fvgLower:F2},{fvgUpper:F2}] Invalid={fvgInvalidPrice:F2} Score={lastTradeScore}");
 		}
 		#endregion
 
@@ -679,13 +983,24 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// Si ya estamos en posicion, stop/target adjuntos gestionan la salida
 			if (Position.MarketPosition != MarketPosition.Flat) return;
 
-			// Cancelar si el setup expiro o la estructura del sweep fue invalidada
+			// Cancelar si el setup expiro, la estructura fue invalidada, o el FVG fue mitigado >50%
 			bool expired = (CurrentBars[0] - fvgArmedBar) > FvgValidBars;
 			bool invalid = setupDir == 1 ? Low[0]  <= fvgInvalidPrice
 			                             : High[0] >= fvgInvalidPrice;
 
-			if (expired || invalid)
+			// FVG mitigation: si el precio ya retrocedio mas del % configurado dentro del FVG → cancelar.
+			// Long FVG: fill desde arriba → si Low baja del nivel de mitigacion es demasiado profundo.
+			// Short FVG: fill desde abajo → si High sube del nivel de mitigacion es demasiado profundo.
+			double mitigLvl = setupDir == 1
+			    ? fvgLower + (fvgUpper - fvgLower) * FvgMitigationPct
+			    : fvgUpper - (fvgUpper - fvgLower) * FvgMitigationPct;
+			bool mitigated = priceInFvg && FvgMitigationPct < 1.0 && (
+			    (setupDir ==  1 && Low[0]  < mitigLvl) ||
+			    (setupDir == -1 && High[0] > mitigLvl));
+
+			if (expired || invalid || mitigated)
 			{
+				if (mitigated) Print($"[FVG-MITIG] FVG rellenado >{FvgMitigationPct:P0} — setup cancelado");
 				setupState = 0;
 				return;
 			}
@@ -723,23 +1038,24 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private bool HasConfirmation1m()
 		{
-			double bodySize  = Math.Abs(Close[0] - Open[0]);
+			double range1m   = High[0] - Low[0];
 			double lowerWick = Math.Min(Open[0], Close[0]) - Low[0];
 			double upperWick = High[0] - Math.Max(Open[0], Close[0]);
 
-			if (setupDir == 1) // long: rechazo con mecha inferior + cierre alcista
+			// spec v2 §6: mecha >= RejectionWickRatio × rango (default 0.5 = 50% del rango)
+			if (setupDir == 1) // long: mecha inferior >= 50% rango + cierre alcista
 			{
-				bool rejection = bodySize > 0
-				              && lowerWick >= RejectionWickRatio * bodySize
+				bool rejection = range1m > 0
+				              && lowerWick >= RejectionWickRatio * range1m
 				              && Close[0]  > Open[0];
 				bool miniChoch = swingHighs1m.Count > 0
 				              && Close[0] > swingHighs1m[swingHighs1m.Count - 1];
 				return rejection || miniChoch;
 			}
-			else // short: rechazo con mecha superior + cierre bajista
+			else // short: mecha superior >= 50% rango + cierre bajista
 			{
-				bool rejection = bodySize > 0
-				              && upperWick >= RejectionWickRatio * bodySize
+				bool rejection = range1m > 0
+				              && upperWick >= RejectionWickRatio * range1m
 				              && Close[0]  < Open[0];
 				bool miniChoch = swingLows1m.Count > 0
 				              && Close[0] < swingLows1m[swingLows1m.Count - 1];
@@ -769,6 +1085,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private void TryDetectSweepB()
 		{
 			if (!ApexBridgeState.TradingEnabled) return;
+			if (nearDrawdown) return;
 
 			double minSweep = MinSweepTicks * TickSize;
 			double minBody  = MinBodyTicks  * TickSize;
@@ -776,14 +1093,44 @@ namespace NinjaTrader.NinjaScript.Strategies
 			bool shortOk = !SetupBRequiresTrend || trend != 1;
 			bool longOk  = !SetupBRequiresTrend || trend != -1;
 
-			// Sesgo diario: punto medio del rango pre-mercado vs cierre de ayer.
-			// Dia alcista = solo longs (short bloqueado). Dia bajista = solo shorts.
-			// Un solo filtro de direccion evita el conflicto con SetupBRequiresTrend.
-			if (EnableDailyBiasFilter && prevSessionClose > 0 && preMarketHigh > double.MinValue)
+			// Sesgo overnight (gap pre-market vs cierre RTH ayer): calculado al fijar el rango pre-mercado.
+			// BULL=solo longs, BEAR=solo shorts, NEUTRAL=ambos (gap < umbral o datos insuficientes).
+			if (!_loggedDailyBias)
+			{
+				string lbl = dailyBiasDir == 1 ? "BULL (solo longs)" : dailyBiasDir == -1 ? "BEAR (solo shorts)" : "NEUTRAL";
+				Print($"[BIAS-B] Overnight bias → {lbl}");
+				_loggedDailyBias = true;
+			}
+			if (dailyBiasDir ==  1) shortOk = false;
+			if (dailyBiasDir == -1) longOk  = false;
+
+			// Filtro volatilidad: rango pre-mercado muy pequeno = dia choppy = sweeps sin follow-through.
+			if (MinPreMarketRange > 0)
+			{
+				double preMktRange = preMarketHigh - preMarketLow;
+				if (preMktRange < MinPreMarketRange)
+				{
+					Print($"[CHOP-FILTER] Rango pre-mkt {preMktRange:F1} pts < {MinPreMarketRange:F1} pts → dia choppy, skip");
+					return;
+				}
+			}
+
+			// Filtro EMA15m opcional (desactivado por defecto: reacciona demasiado rapido).
+			if (EnableEmaFilter && ema9_15m != null && ema21_15m != null)
+			{
+				double e9  = ema9_15m[0];
+				double e21 = ema21_15m[0];
+				if (e9 > e21) shortOk = false;
+				if (e9 < e21) longOk  = false;
+			}
+
+			// Filtro legacy premarket vs RTH close (desactivado por defecto).
+			double biasRef = lastRthClose > 0 ? lastRthClose : prevSessionClose;
+			if (EnableDailyBiasFilter && biasRef > 0 && preMarketHigh > double.MinValue)
 			{
 				double midRange = (preMarketHigh + preMarketLow) / 2.0;
-				if (midRange > prevSessionClose) shortOk = false; // dia alcista: no shorts
-				if (midRange < prevSessionClose) longOk  = false; // dia bajista: no longs
+				if (midRange > biasRef) shortOk = false;
+				if (midRange < biasRef) longOk  = false;
 			}
 
 			// Filtro horario: solo primeros SetupBMaxMinutes del kill zone.
@@ -794,17 +1141,21 @@ namespace NinjaTrader.NinjaScript.Strategies
 				if (Time[0] >= kzStart.AddMinutes(SetupBMaxMinutes)) return;
 			}
 
+			// Buffer de recuperacion: Close debe superar el nivel en 2+ ticks (no apenas encima).
+			// Evita entradas donde el cierre es marginal y el sweep es probablemente falso.
+			double retBuf = 2 * TickSize;
+
 			// --- Barridas LONG (sweep de un minimo, reversal alcista) ---
 			if (longOk && (Close[0] - Open[0]) >= minBody)
 			{
 				// Nivel 1: rango pre-mercado (8:00-9:30 ET)
-				if (Low[0] < preMarketLow - minSweep && Close[0] > preMarketLow)
+				if (Low[0] < preMarketLow - minSweep && Close[0] > preMarketLow + retBuf)
 				{ EnterSweepB(1, "PreMktL"); return; }
 
 				// Nivel 2: Previous Day Low — maximo nivel de liquidez sell-side (ICT)
 				if (EnablePdhPdl && prevDayReady
-				    && prevDayLow < preMarketLow - 10 * TickSize // no duplicar si estan muy juntos
-				    && Low[0] < prevDayLow - minSweep && Close[0] > prevDayLow)
+				    && prevDayLow < preMarketLow - 10 * TickSize
+				    && Low[0] < prevDayLow - minSweep && Close[0] > prevDayLow + retBuf)
 				{ EnterSweepB(1, "PDL"); return; }
 			}
 
@@ -812,46 +1163,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (shortOk && (Open[0] - Close[0]) >= minBody)
 			{
 				// Nivel 1: rango pre-mercado
-				if (High[0] > preMarketHigh + minSweep && Close[0] < preMarketHigh)
+				if (High[0] > preMarketHigh + minSweep && Close[0] < preMarketHigh - retBuf)
 				{ EnterSweepB(-1, "PreMktH"); return; }
 
 				// Nivel 2: Previous Day High — maximo nivel de liquidez buy-side (ICT)
 				if (EnablePdhPdl && prevDayReady
 				    && prevDayHigh > preMarketHigh + 10 * TickSize
-				    && High[0] > prevDayHigh + minSweep && Close[0] < prevDayHigh)
+				    && High[0] > prevDayHigh + minSweep && Close[0] < prevDayHigh - retBuf)
 				{ EnterSweepB(-1, "PDH"); return; }
 			}
-		}
-
-		// Confluencia: OB O FVG en la misma zona que el sweep.
-		// dir=1 → buscamos confluencia alcista (vela bajista previa = OB, o FVG alcista).
-		// dir=-1 → buscamos confluencia bajista.
-		// Retorna true si hay al menos 1 factor de confluencia + el filtro de tendencia base.
-		// Sin confluencia = sweep debil / trampa → no entrar.
-		private bool HasConfluence(int dir)
-		{
-			if (CurrentBars[0] < 5) return false;
-
-			// Factor 1: Order Block — ultima vela de color opuesto en las 5 barras previas
-			// (zona donde los institucionales colocaron ordenes antes del impulso)
-			bool hasOB = false;
-			for (int i = 1; i <= 5; i++)
-			{
-				if (dir == 1  && Open[i] > Close[i]) { hasOB = true; break; } // vela bajista previa = OB alcista
-				if (dir == -1 && Close[i] > Open[i]) { hasOB = true; break; } // vela alcista previa = OB bajista
-			}
-
-			// Factor 2: FVG en 1m — gap de 3 velas en la zona del sweep
-			bool hasFvg = false;
-			if (CurrentBars[0] >= 3)
-			{
-				if (dir == 1)  hasFvg = Lows[0][0]  > Highs[0][2] && (Lows[0][0]  - Highs[0][2]) >= MinFvgPoints;
-				if (dir == -1) hasFvg = Highs[0][2] > Lows[0][0]  && (Highs[0][2] - Lows[0][0])  >= MinFvgPoints;
-			}
-
-			bool result = hasOB || hasFvg;
-			Print($"[CONF-B] dir={dir} OB={hasOB} FVG={hasFvg} → {(result ? "ENTRA" : "SKIP")}");
-			return result;
 		}
 
 		private void EnterSweepB(int dir, string source = "")
@@ -876,6 +1196,42 @@ namespace NinjaTrader.NinjaScript.Strategies
 		}
 		#endregion
 
+		#region Trade Score Engine (spec v2 §18)
+		// Score maximo = 100. Minimo para operar = MinTradeScore (default 80).
+		// Sweep(25) + Displacement(20) + FVG/iFVG(25) + Estructura(15) + Bias(10) + VWAP(5).
+		private int CalcTradeScore(int dir, bool hasSweep, bool hasDisplace, double fvgSize, bool hasStructure)
+		{
+			int score = 0;
+
+			if (hasSweep)    score += 25;
+			if (hasDisplace) score += 20;
+
+			// FVG o iFVG: fuerte (>=4pts) = 25, debil (2-4pts) = 15
+			if      (fvgSize >= 4.0)          score += 25;
+			else if (fvgSize >= MinFvgPoints) score += 15;
+
+			if (hasStructure) score += 15; // estructura 15m confirmada
+
+			// Bias multi-timeframe (spec §7: Daily+4H+15M).
+			// Contamos votos en favor de la direccion del trade.
+			int votes = 0;
+			if (dailyBiasDir ==  dir) votes++;
+			else if (dailyBiasDir == -dir) votes--;
+			if (fourHBiasDir ==  dir) votes++;
+			else if (fourHBiasDir == -dir) votes--;
+			// 15m trend ya cuenta en hasStructure; no doble conteo.
+
+			if      (votes >= 2)  score += 10; // daily + 4H alineados con dir
+			else if (votes == 1)  score += 7;  // uno alineado, otro neutral
+			else if (votes == 0)  score += 3;  // ambos neutrales
+			// votes < 0 → en contra → 0 pts
+
+			// VWAP +5 pendiente v3 (requiere instalacion custom del indicador en NT8).
+
+			return score;
+		}
+		#endregion
+
 		#region Tracking swings 1m (para mini-CHoCH)
 		private void Track1mSwings()
 		{
@@ -893,6 +1249,128 @@ namespace NinjaTrader.NinjaScript.Strategies
 			}
 			if (isHigh) AddCapped(swingHighs1m, pivH);
 			if (isLow)  AddCapped(swingLows1m,  pivL);
+		}
+		#endregion
+
+		#region Setup D: FVG 15m alineado con sesgo diario (sin prereq sweep)
+		// Detecta FVGs en 15m en la direccion del mercado (EMA20 daily).
+		// En mercado alcista (precio > EMA20): busca FVG alcista, entra LONG en retroceso.
+		// En mercado bajista (precio < EMA20): busca FVG bajista, entra SHORT en retroceso.
+		// Corre en BarsInProgress==1 (15m).
+		private void TryDetectFvgD()
+		{
+			if (tradedToday || tradingDisabled) return;
+			if (!ApexBridgeState.TradingEnabled) return;
+			if (setupState == 1) return; // Setup A ya armado
+			if (prevDayClose1 <= 0 || prevDayClose2 <= 0) return; // aun no hay 2 cierres diarios
+			if (CurrentBars[1] < 3) return;
+
+			bool dailyBull = prevDayClose1 > prevDayClose2;
+			bool dailyBear = prevDayClose1 < prevDayClose2;
+			if (!dailyBull && !dailyBear) return;
+
+			// Si ya hay un FVG activo, verificar expiracion (8 barras 15m = 2 horas)
+			if (fvgDState == 1)
+			{
+				if (CurrentBars[1] - fvgDBar > 8)
+				{
+					fvgDState   = 0;
+					fvgDPriceIn = false;
+				}
+				return; // seguir esperando retroceso; la entrada la maneja TryEnterFvgD en 1m
+			}
+
+			double minGap = MinFvgPoints; // pts minimos del gap (parametro existente)
+
+			if (dailyBull)
+			{
+				// FVG alcista en 15m: Low[0] > High[2] — gap entre vela[2] y vela[0]
+				// Zona: High[2] (piso) hasta Low[0] (techo)
+				double gapLow  = Highs[1][2];
+				double gapHigh = Lows[1][0];
+				if (gapHigh > gapLow + minGap)
+				{
+					fvgDLower   = gapLow;
+					fvgDUpper   = gapHigh;
+					fvgDDir     = 1;
+					fvgDState   = 1;
+					fvgDBar     = CurrentBars[1];
+					fvgDPriceIn = false;
+					Print($"[FVG-D] BULL FVG [{fvgDLower:F1},{fvgDUpper:F1}] @ {Times[1][0]:HH:mm} (gap={gapHigh-gapLow:F1}pts) — esperando retroceso");
+				}
+			}
+			else // dailyBear
+			{
+				// FVG bajista en 15m: High[0] < Low[2] — gap entre vela[2] y vela[0]
+				// Zona: High[0] (piso) hasta Low[2] (techo)
+				double gapLow  = Highs[1][0];
+				double gapHigh = Lows[1][2];
+				if (gapHigh > gapLow + minGap)
+				{
+					fvgDLower   = gapLow;
+					fvgDUpper   = gapHigh;
+					fvgDDir     = -1;
+					fvgDState   = 1;
+					fvgDBar     = CurrentBars[1];
+					fvgDPriceIn = false;
+					Print($"[FVG-D] BEAR FVG [{fvgDLower:F1},{fvgDUpper:F1}] @ {Times[1][0]:HH:mm} (gap={gapHigh-gapLow:F1}pts) — esperando retroceso");
+				}
+			}
+		}
+
+		// Corre en BarsInProgress==0 (1m): cuando el precio entra al FVG detectado en 15m.
+		private void TryEnterFvgD()
+		{
+			if (fvgDState != 1) return;
+
+			// Verificar que estamos dentro de kill zone (puede haberse detectado antes)
+			// El caller ya verifica inKillZone, no hace falta repetirlo aqui.
+
+			// Detectar entrada al FVG
+			if (fvgDDir == 1)
+			{
+				if (Low[0] <= fvgDUpper && Low[0] >= fvgDLower) fvgDPriceIn = true;
+				// Invalidar si rompe por debajo del FVG
+				if (Low[0] < fvgDLower - 4 * TickSize) { fvgDState = 0; return; }
+			}
+			else
+			{
+				if (High[0] >= fvgDLower && High[0] <= fvgDUpper) fvgDPriceIn = true;
+				// Invalidar si rompe por encima del FVG
+				if (High[0] > fvgDUpper + 4 * TickSize) { fvgDState = 0; return; }
+			}
+
+			if (!fvgDPriceIn) return;
+
+			// Confirmacion 1m: vela de rechazo o mini-CHoCH (igual que Setup A)
+			double bodySize  = Math.Abs(Close[0] - Open[0]);
+			double lowerWick = Math.Min(Open[0], Close[0]) - Low[0];
+			double upperWick = High[0] - Math.Max(Open[0], Close[0]);
+			bool   confirmed = false;
+
+			if (fvgDDir == 1) // long: rechazo alcista O mini-CHoCH up
+			{
+				bool rejection = bodySize > 0 && lowerWick >= RejectionWickRatio * bodySize && Close[0] > Open[0];
+				bool miniChoch = swingHighs1m.Count > 0 && Close[0] > swingHighs1m[swingHighs1m.Count - 1];
+				confirmed = rejection || miniChoch;
+			}
+			else // short: rechazo bajista O mini-CHoCH down
+			{
+				bool rejection = bodySize > 0 && upperWick >= RejectionWickRatio * bodySize && Close[0] < Open[0];
+				bool miniChoch = swingLows1m.Count > 0 && Close[0] < swingLows1m[swingLows1m.Count - 1];
+				confirmed = rejection || miniChoch;
+			}
+
+			if (!confirmed) return;
+
+			// Entrar
+			string sig = fvgDDir == 1 ? "LongFvgD" : "ShortFvgD";
+			SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
+			SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
+			if (fvgDDir == 1) EnterLong(0, Contratos, sig);
+			else              EnterShort(0, Contratos, sig);
+			fvgDState = 0;
+			Print($"[FVG-D] Entrada {sig} @ {Close[0]:F2} FVG=[{fvgDLower:F1},{fvgDUpper:F1}]");
 		}
 		#endregion
 
@@ -1011,11 +1489,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 		#region Riesgo Apex (aproximaciones locales)
 		private void ResetForNewSession()
 		{
-			// DIAGNOSTICO sesion 14: timestamp de cada reset. Si en el Output aparecen DOS resets
-			// el MISMO dia calendario, la plantilla parte el dia en 2 sesiones y la 2da borra el
-			// rango premarket (causa de "SIN datos"). Confirmar esto antes de tocar la logica de sesion.
-			Print($"[RESET] sesion reset @ {Time[0]:yyyy-MM-dd HH:mm}");
-
 			// Guardar PDH/PDL de la sesion que cierra antes de resetear el rango.
 			if (sessionHigh > double.MinValue && sessionLow < double.MaxValue)
 			{
@@ -1029,15 +1502,17 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			tradedToday         = false;
 			tradingDisabled     = false;
+			nearDrawdown        = false;
 			setupState          = 0;
 			sweepState15m       = 0;
 			levelBrokenLow15m   = false;
 			levelBrokenHigh15m  = false;
-			sweepDispSeen       = false;
-			sweepFvgSeen        = false;
 			_loggedTrendZero    = false;
+			_loggedDailyBias    = false;
 			preMarketHigh       = double.MinValue;
 			preMarketLow        = double.MaxValue;
+			preMarketLastClose  = 0;
+			dailyBiasDir        = 0;
 			preMarketReady      = false;
 			preMarketAttempted  = false;
 			activeSignal        = "";
@@ -1054,6 +1529,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 			obDir               = 0;
 			obBar               = 0;
 			allowedSecondTrade  = false;
+			fvgDState           = 0;
+			fvgDDir             = 0;
+			fvgDUpper           = 0;
+			fvgDLower           = 0;
+			fvgDBar             = 0;
+			fvgDPriceIn         = false;
+			orHigh              = double.MinValue;
+			orLow               = double.MaxValue;
+			orReady             = false;
+			orTriggered         = false;
 			sessionStartCumPnl  = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
 			lock (ApexBridgeState.TodayTradesLock)
 				ApexBridgeState.TodayTrades.Clear();
@@ -1096,6 +1581,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (tradingDisabled)
 				FlattenAndCancel("Riesgo: flat");
+
+			// Guardia de proximidad: spec §18.5E — si el equity libre < 1 SL del limite trailing DD,
+			// no abrir nuevas posiciones (demasiado cerca de fallar la cuenta).
+			double ddFloor    = accountHighWater - TrailingDrawdown;
+			double distToDD   = equity - ddFloor;
+			bool wasNear      = nearDrawdown;
+			nearDrawdown = Position.MarketPosition == MarketPosition.Flat
+			            && distToDD >= 0 && distToDD < StopLossUsd;
+			if (nearDrawdown && !wasNear)
+				Print($"[RIESGO] Cerca del trailing DD: {distToDD:C} margen disponible < SL {StopLossUsd:C}. Sin nuevas entradas.");
 		}
 
 		// Registra trades cerrados en el tracker de consistencia.
@@ -1176,6 +1671,76 @@ namespace NinjaTrader.NinjaScript.Strategies
 			ApexBridgeState.TradingDisabled = tradingDisabled;
 		}
 
+		#region Setup E: Opening Range Breakout
+		// Registra el rango 9:30-10:00 ET y entra en breakout despues en la direccion del sesgo diario.
+		// En febrero bajista: rompe el minimo del rango → SHORT. En enero alcista: rompe maximo → LONG.
+		// Stop $375 / Target $1050 — mismo RR. Se combina con A/B/D: solo dispara si aun no se opero.
+		private void TrySetupE()
+		{
+			int t = ToTime(Time[0]);
+			int kzStart = KillZoneStart * 100; // ej 93000
+
+			// Fase 1: construir el rango (primeros 30 min del kill zone = 9:30-10:00 ET).
+			// orEndTime: KillZoneStart + 30 min en formato HHmm → HHmmss para comparar con ToTime().
+			// Ejemplo: KillZoneStart=930 → 960 (10:00) → *100 = 96000 (HHmmss).
+			// Ajuste de hora: 960 tiene mm=60 (invalido), necesitamos +40 al HH: 1000 → 100000.
+			int kzStartHH = KillZoneStart / 100, kzStartMM = KillZoneStart % 100;
+			int orEndMM   = kzStartMM + 30;
+			int orEndHH   = kzStartHH + orEndMM / 60;
+			orEndMM       = orEndMM % 60;
+			int orEndTime = (orEndHH * 100 + orEndMM) * 100; // HHmmss
+
+			if (!orReady)
+			{
+				if (t >= kzStart && t < orEndTime)
+				{
+					orHigh = Math.Max(orHigh, High[0]);
+					orLow  = Math.Min(orLow,  Low[0]);
+				}
+				else if (t >= orEndTime && orHigh > double.MinValue)
+				{
+					orReady = true;
+					Print($"[OR] Rango {kzStartHH:D2}:{kzStartMM:D2}-{orEndHH:D2}:{orEndMM:D2} bloqueado: High={orHigh:F1} Low={orLow:F1} ({orHigh-orLow:F1}pts)");
+				}
+				return;
+			}
+
+			// Fase 2: esperar breakout (despues del OR, hasta fin kill zone)
+			if (orTriggered || tradedToday || tradingDisabled || !ApexBridgeState.TradingEnabled) return;
+			if (setupState == 1) return; // Setup A armado
+
+			// Necesitar sesgo diario confirmado (2 cierres consecutivos)
+			if (prevDayClose1 <= 0 || prevDayClose2 <= 0) return;
+			bool bearDay = prevDayClose1 < prevDayClose2;
+			bool bullDay = prevDayClose1 > prevDayClose2;
+			if (!bearDay && !bullDay) return;
+
+			// Rango minimo: si el rango de apertura es menor a 8 pts, no es significativo
+			if (orHigh - orLow < 8.0) return;
+
+			double buf = 2 * TickSize; // buffer: cierre debe superar el nivel por 2 ticks
+
+			if (bearDay && Close[0] < orLow - buf && Close[0] < Open[0]) // breakout bajista
+			{
+				Print($"[SETUP-E] SHORT breakout OR minimo={orLow:F1} close={Close[0]:F1}");
+				string sig = "ShortOR";
+				SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
+				SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
+				EnterShort(0, Contratos, sig);
+				orTriggered = true;
+			}
+			else if (bullDay && Close[0] > orHigh + buf && Close[0] > Open[0]) // breakout alcista
+			{
+				Print($"[SETUP-E] LONG breakout OR maximo={orHigh:F1} close={Close[0]:F1}");
+				string sig = "LongOR";
+				SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
+				SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
+				EnterLong(0, Contratos, sig);
+				orTriggered = true;
+			}
+		}
+		#endregion
+
 		#region Ordenes / utilidades
 		private void AddCapped(List<double> list, double v)
 		{
@@ -1211,7 +1776,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			if (order == null) return;
 			if (order.Name == "LongFVG"   || order.Name == "ShortFVG" ||
-			    order.Name == "LongSweep" || order.Name == "ShortSweep")
+			    order.Name == "LongSweep" || order.Name == "ShortSweep" ||
+			    order.Name == "LongFvgD"  || order.Name == "ShortFvgD" ||
+			    order.Name == "LongOR"    || order.Name == "ShortOR")
 				entryOrder = order;
 		}
 
@@ -1220,14 +1787,19 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			if (execution.Order == null) return;
 			if ((execution.Order.Name == "LongFVG"   || execution.Order.Name == "ShortFVG" ||
-			     execution.Order.Name == "LongSweep" || execution.Order.Name == "ShortSweep")
+			     execution.Order.Name == "LongSweep" || execution.Order.Name == "ShortSweep" ||
+			     execution.Order.Name == "LongFvgD"  || execution.Order.Name == "ShortFvgD" ||
+			     execution.Order.Name == "LongOR"    || execution.Order.Name == "ShortOR")
 			    && execution.Order.OrderState == OrderState.Filled)
 			{
 				tradedToday    = true;
 				setupState     = 0;
 				activeSignal   = execution.Order.Name;
 				lastEntryPrice = price;
-				lastEntryDir   = (execution.Order.Name == "LongFVG" || execution.Order.Name == "LongSweep") ? 1 : -1;
+				lastEntryDir   = (execution.Order.Name == "LongFVG"  ||
+				                  execution.Order.Name == "LongSweep" ||
+				                  execution.Order.Name == "LongFvgD" ||
+				                  execution.Order.Name == "LongOR") ? 1 : -1;
 
 				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
 					$"{(lastEntryDir == 1 ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
