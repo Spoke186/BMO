@@ -789,12 +789,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				if (trend == 1) // CHoCH alcista en 15m
 				{
-					// CHoCH level: ultimo swing high 15m o fallback al High de la barra de sweep.
+					// CHoCH level: ultimo swing high 15m o fallback al OR high.
+					// NO usar Highs[1][sweepOff] (high del sweep bar con mecha): imposiblemente alto.
 					double chochLevel;
-					int sweepOff = CurrentBars[1] - sweepBar15m;
 					if      (swingHighs15m.Count > 0) chochLevel = swingHighs15m[swingHighs15m.Count - 1];
-					else if (sweepOff > 0 && sweepOff < CurrentBars[1]) chochLevel = Highs[1][sweepOff];
-					else if (preMarketHigh > 0)       chochLevel = preMarketHigh;
+					else if (preMarketHigh > double.MinValue && preMarketHigh > 0) chochLevel = preMarketHigh;
 					else return;
 
 					// LATCH Displacement: bar[1] = impulso institucional.
@@ -874,9 +873,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				else // trend == -1: CHoCH bajista en 15m
 				{
 					double chochLevel;
-					int sweepOff = CurrentBars[1] - sweepBar15m;
 					if      (swingLows15m.Count > 0) chochLevel = swingLows15m[swingLows15m.Count - 1];
-					else if (sweepOff > 0 && sweepOff < CurrentBars[1]) chochLevel = Lows[1][sweepOff];
 					else if (preMarketLow < double.MaxValue && preMarketLow > 0) chochLevel = preMarketLow;
 					else return;
 
