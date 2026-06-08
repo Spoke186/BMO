@@ -49,7 +49,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		[NinjaScriptProperty]
 		[Display(Name = "Displacement 15m (cuerpo >= X * ATR)", Order = 6, GroupName = "2. Estrategia")]
-		[Range(0.5, 5)]
+		[Range(0.1, 5)]
 		public double DisplacementAtrMult { get; set; }
 
 		[NinjaScriptProperty]
@@ -69,7 +69,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		[NinjaScriptProperty]
 		[Display(Name = "Max barras 15m para CHoCH tras barrida", Order = 10, GroupName = "2. Estrategia")]
-		[Range(1, 20)]
+		[Range(1, 48)]
 		public int SweepChochMaxBars15m { get; set; }
 
 		[NinjaScriptProperty]
@@ -339,6 +339,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double sweepFvgL;
 		private double sweepFvgU;
 		private System.IO.StreamWriter _logWriter;
+		private bool trailActivated; // trailing stop ya activado para el trade activo
 		#endregion
 
 		protected override void OnStateChange()
@@ -355,10 +356,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				BarsRequiredToTrade  = 20;
 				IncludeCommission    = true;
 
-				// Tamano de posicion y riesgo (spec v2: 2 contratos fijos, $250 stop / $700 target)
+				// Tamano de posicion y riesgo (1:2.8 RR, stop ampliado para reducir ruido)
 				Contratos            = 2;
-				StopLossUsd          = 250;   // riesgo fijo MNQ: 250 pts / NQ: 25 pts
-				ProfitTargetUsd      = 700;   // target fijo MNQ: 700 pts / NQ: 70 pts (~1:3 RR)
+				StopLossUsd          = 375;   // stop ampliado: mas margen vs ruido intradiario
+				ProfitTargetUsd      = 1050;  // target 1:2.8 RR
 				SwingStrength15m     = 3;
 				SwingStrength1m      = 2;
 				DisplacementAtrMult  = 0.2;   // max permisivo: casi cualquier barra cuenta como displacement
@@ -369,7 +370,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				FvgMitigationPct     = 0.90;  // cancelar solo si >90% rellenado
 				SweepChochMaxBars15m = 24;    // 6h para CHoCH (cubre toda la sesion NY)
 				StopBufferTicks      = 2;
-				EnableSetupB         = false; // spec v2: sin sweeps directos sin FVG/iFVG
+				EnableSetupB         = true;  // activo: genera trades adicionales (sweep directo)
 				MinSweepTicks        = 6;
 				MinBodyTicks         = 6;
 				SetupBRequiresTrend  = false;
@@ -394,7 +395,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ForcedExit           = 1400;  // 14:00 ET (13:00 Colombia) — bloquea nuevas entradas
 				StartingBalance      = 50000;
 				TrailingDrawdown     = 2500;
-				MaxDailyLoss         = 250;   // spec v2: 1 perdida ($250) = stop el dia
+				MaxDailyLoss         = 400;   // spec: 1 stop loss ($375) + slippage = stop el dia
 			}
 			else if (State == State.Configure)
 			{
@@ -558,6 +559,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			UpdateRiskGuards();
 			RecordClosedTrades();
+			ManageTrailStop();
 
 			// MarketCalendar adelanta el cierre en medias sesiones CME (12:45 ET).
 			int forcedExitToday = Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]));
@@ -970,17 +972,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 		#region Gestion del setup en 1m (retroceso → confirmacion → entrada)
 		private void ManageSetup1m(bool inKillZone)
 		{
-			// Si ya estamos en posicion, stop/target adjuntos gestionan la salida
 			if (Position.MarketPosition != MarketPosition.Flat) return;
 
-			// Cancelar si el setup expiro, la estructura fue invalidada, o el FVG fue mitigado >50%
-			bool expired = (CurrentBars[0] - fvgArmedBar) > FvgValidBars;
-			bool invalid = setupDir == 1 ? Low[0]  <= fvgInvalidPrice
-			                             : High[0] >= fvgInvalidPrice;
+			bool expired  = (CurrentBars[0] - fvgArmedBar) > FvgValidBars;
+			bool invalid  = setupDir == 1 ? Low[0]  <= fvgInvalidPrice
+			                              : High[0] >= fvgInvalidPrice;
 
-			// FVG mitigation: si el precio ya retrocedio mas del % configurado dentro del FVG → cancelar.
-			// Long FVG: fill desde arriba → si Low baja del nivel de mitigacion es demasiado profundo.
-			// Short FVG: fill desde abajo → si High sube del nivel de mitigacion es demasiado profundo.
 			double mitigLvl = setupDir == 1
 			    ? fvgLower + (fvgUpper - fvgLower) * FvgMitigationPct
 			    : fvgUpper - (fvgUpper - fvgLower) * FvgMitigationPct;
@@ -988,42 +985,39 @@ namespace NinjaTrader.NinjaScript.Strategies
 			    (setupDir ==  1 && Low[0]  < mitigLvl) ||
 			    (setupDir == -1 && High[0] > mitigLvl));
 
-			if (expired || invalid || mitigated)
-			{
-				if (mitigated) Print($"[FVG-MITIG] FVG rellenado >{FvgMitigationPct:P0} — setup cancelado");
-				setupState = 0;
-				return;
-			}
+			if (expired)  { L($"[1m-GATE] EXPIRED bars={CurrentBars[0]-fvgArmedBar}/{FvgValidBars} fvg=[{fvgLower:F1},{fvgUpper:F1}] C={Close[0]:F2}"); setupState = 0; return; }
+			if (invalid)  { L($"[1m-GATE] INVALID price={( setupDir==1?Low[0]:High[0] ):F2} vs invalidAt={fvgInvalidPrice:F2}"); setupState = 0; return; }
+			if (mitigated){ L($"[1m-GATE] MITIGATED"); setupState = 0; return; }
 
-			// Solo entrar dentro de la kill zone (el setup puede armarse antes; la entrada no)
-			if (!inKillZone) return;
+			if (!inKillZone) { L($"[1m-GATE] OUT_OF_KZ t={ToTime(Time[0])} kz={KillZoneStart}-{KillZoneEnd}"); return; }
 
-			// Consistencia 50% Apex (solo en vivo)
 			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
 			{
-				Print($"[CONSISTENCIA] Setup saltado: ganarlo violaria regla 50% Apex "
-				    + $"(hoy {pnlTracker.TodayPnl:C} + {ProfitTargetUsd:C} vs total {pnlTracker.TotalPnl:C}).");
-				setupState = 0;
-				return;
+				Print($"[CONSISTENCIA] Setup saltado."); setupState = 0; return;
 			}
 
-			// Paso 5a: detectar que el precio entro en la zona del FVG
-			if (setupDir == 1)
+			// Paso 5a: zona de entrada = FVG + buffer de 1× el tamaño del FVG encima/debajo
+			// Permite entrar cuando precio se acerca al FVG, no solo cuando entra exactamente
+			if (!priceInFvg)
 			{
-				if (Low[0] <= fvgUpper && Low[0] >= fvgLower)
-					priceInFvg = true;
-			}
-			else
-			{
-				if (High[0] >= fvgLower && High[0] <= fvgUpper)
-					priceInFvg = true;
+				double fvgSize   = fvgUpper - fvgLower;
+				double entryZoneTop    = fvgUpper + fvgSize; // buffer arriba para LONG
+				double entryZoneBottom = fvgLower - fvgSize; // buffer abajo para SHORT
+				bool inZone = setupDir == 1
+				    ? Low[0]  <= entryZoneTop    // barra baja hasta zona de entrada LONG
+				    : High[0] >= entryZoneBottom; // barra sube hasta zona de entrada SHORT
+				if (inZone) { priceInFvg = true; L($"[1m-ENTER] precio en zona fvg=[{fvgLower:F1},{fvgUpper:F1}] buf={entryZoneTop:F1} C={Close[0]:F2}"); }
+				else
+				{
+					L($"[1m-GATE] NO_FVG C={Close[0]:F2} fvg=[{fvgLower:F1},{fvgUpper:F1}] buf={entryZoneTop:F1} dist={( setupDir==1 ? Close[0]-entryZoneTop : entryZoneBottom-Close[0] ):F1}pts");
+					return;
+				}
 			}
 
-			if (!priceInFvg) return;
-
-			// Paso 5b: confirmacion en 1m (rechazo O mini-CHoCH)
-			if (HasConfirmation1m())
-				EnterOnConfirmation();
+			// Paso 5b: confirmacion 1m
+			bool conf = HasConfirmation1m();
+			if (!conf) { L($"[1m-GATE] NO_CONF C={Close[0]:F2} O={Open[0]:F2} H={High[0]:F2} L={Low[0]:F2}"); return; }
+			EnterOnConfirmation();
 		}
 
 		private bool HasConfirmation1m()
@@ -1525,6 +1519,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			obDir               = 0;
 			obBar               = 0;
 			allowedSecondTrade  = false;
+			trailActivated      = false;
 			fvgDState           = 0;
 			fvgDDir             = 0;
 			fvgDUpper           = 0;
@@ -1538,6 +1533,25 @@ namespace NinjaTrader.NinjaScript.Strategies
 			sessionStartCumPnl  = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
 			lock (ApexBridgeState.TodayTradesLock)
 				ApexBridgeState.TodayTrades.Clear();
+		}
+
+		// Trailing stop de proteccion: cuando el trade lleva $200 de ganancia no realizada,
+		// activa un trailing stop de $200 desde el peak. Protege contra dar-back de MFE alto.
+		// Se activa una sola vez por trade (trailActivated se resetea en ResetForNewSession).
+		private void ManageTrailStop()
+		{
+			if (Position.MarketPosition == MarketPosition.Flat) return;
+			if (trailActivated) return;
+			if (string.IsNullOrEmpty(activeSignal)) return;
+
+			double pnl = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]);
+			if (pnl < 200) return;
+
+			// Reemplaza el stop fijo con trailing de $200 desde el highest favorable price.
+			// En NT8, SetTrailStop con Currency rastrea desde la barra actual hacia adelante.
+			SetTrailStop(activeSignal, CalculationMode.Currency, 200, false);
+			trailActivated = true;
+			Print($"[TRAIL] ON sig={activeSignal} P&L={pnl:C} → trail $200 desde peak");
 		}
 
 		private void UpdateRiskGuards()
