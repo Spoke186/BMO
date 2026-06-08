@@ -375,7 +375,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				MinSweepTicks        = 6;
 				MinBodyTicks         = 6;
 				SetupBRequiresTrend  = false;
-				EnableDailyBiasFilter = true;  // solo longs en dias alcistas, shorts en dias bajistas → mejora WR
+				EnableDailyBiasFilter = false; // backtest: filter elimina TPs buenos → peor resultado global
 				PreMarketStartTime   = 800;
 				SetupBMaxMinutes     = 0;
 				EnableSetupC         = false;
