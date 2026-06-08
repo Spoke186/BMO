@@ -339,8 +339,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double sweepFvgL;
 		private double sweepFvgU;
 		private System.IO.StreamWriter _logWriter;
-		private bool   trailActivated; // trail ya armado para el trade activo (para Print una vez)
-		private double peakPnl;        // max P&L en bar-close desde entrada (trail protection)
 		#endregion
 
 		protected override void OnStateChange()
@@ -1520,8 +1518,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 			obDir               = 0;
 			obBar               = 0;
 			allowedSecondTrade  = false;
-			trailActivated      = false;
-			peakPnl             = 0;
 			fvgDState           = 0;
 			fvgDDir             = 0;
 			fvgDUpper           = 0;
@@ -1537,12 +1533,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ApexBridgeState.TodayTrades.Clear();
 		}
 
-		// Trail desactivado: corta trades que van al TP ($1050). Mejor resultado sin proteccion.
-		// Campos peakPnl/trailActivated conservados para eventual reactivacion.
-		private void ManageTrailStop()
-		{
-			if (Position.MarketPosition == MarketPosition.Flat) { peakPnl = 0; trailActivated = false; }
-		}
+		// Trail desactivado: backtest muestra que corta trades que van al TP ($1050).
+		// Reactivar aqui si se necesita proteccion futura.
+		private void ManageTrailStop() { }
 
 		private void UpdateRiskGuards()
 		{
