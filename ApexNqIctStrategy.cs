@@ -375,7 +375,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				MinSweepTicks        = 6;
 				MinBodyTicks         = 6;
 				SetupBRequiresTrend  = false;
-				EnableDailyBiasFilter = false;
+				EnableDailyBiasFilter = true;  // solo longs en dias alcistas, shorts en dias bajistas → mejora WR
 				PreMarketStartTime   = 800;
 				SetupBMaxMinutes     = 0;
 				EnableSetupC         = false;
@@ -1537,58 +1537,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ApexBridgeState.TodayTrades.Clear();
 		}
 
-		// Proteccion en dos niveles (bar-close — SetTrailStop no funciona mid-trade en backtest NT8):
-		//
-		// Nivel 1 — Breakeven: si el trade llego a $200 favorable en bar-close y ahora pierde
-		//   mas de $100 → salir. Convierte derrotas de $375 en ~$100 cuando la direccion fue correcta.
-		//
-		// Nivel 2 — Trail completo: si el trade llego a $600 favorable en bar-close y cayo $200
-		//   desde el peak → salir. Protege trades grandes que casi llegaron al TP.
+		// Trail desactivado: corta trades que van al TP ($1050). Mejor resultado sin proteccion.
+		// Campos peakPnl/trailActivated conservados para eventual reactivacion.
 		private void ManageTrailStop()
 		{
-			if (Position.MarketPosition == MarketPosition.Flat)
-			{
-				peakPnl        = 0;
-				trailActivated = false;
-				return;
-			}
-			if (string.IsNullOrEmpty(activeSignal)) return;
-
-			double pnl = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]);
-			if (pnl > peakPnl) peakPnl = pnl;
-
-			// Nivel 1: breakeven — limita perdida maxima a $100 si el trade estuvo $200+ en verde
-			if (peakPnl >= 200 && pnl < -100)
-			{
-				Print($"[BE] EXIT sig={activeSignal} pnl={pnl:C} peak={peakPnl:C}");
-				if (Position.MarketPosition == MarketPosition.Long)
-					ExitLong(activeSignal);
-				else
-					ExitShort(activeSignal);
-				peakPnl        = 0;
-				trailActivated = false;
-				return;
-			}
-
-			// Nivel 2: trail completo — protege si el trade llego a $600+ y cae $200 desde peak
-			if (peakPnl >= 600)
-			{
-				if (!trailActivated)
-				{
-					trailActivated = true;
-					Print($"[TRAIL] ARMED sig={activeSignal} peak={peakPnl:C}");
-				}
-				if (pnl < peakPnl - 200)
-				{
-					Print($"[TRAIL] EXIT sig={activeSignal} pnl={pnl:C} peak={peakPnl:C}");
-					if (Position.MarketPosition == MarketPosition.Long)
-						ExitLong(activeSignal);
-					else
-						ExitShort(activeSignal);
-					peakPnl        = 0;
-					trailActivated = false;
-				}
-			}
+			if (Position.MarketPosition == MarketPosition.Flat) { peakPnl = 0; trailActivated = false; }
 		}
 
 		private void UpdateRiskGuards()
