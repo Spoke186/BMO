@@ -339,7 +339,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double sweepFvgL;
 		private double sweepFvgU;
 		private System.IO.StreamWriter _logWriter;
-		private bool trailActivated; // trailing stop ya activado para el trade activo
+		private bool   trailActivated; // trail ya armado para el trade activo (para Print una vez)
+		private double peakPnl;        // max P&L en bar-close desde entrada (trail protection)
 		#endregion
 
 		protected override void OnStateChange()
@@ -1520,6 +1521,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			obBar               = 0;
 			allowedSecondTrade  = false;
 			trailActivated      = false;
+			peakPnl             = 0;
 			fvgDState           = 0;
 			fvgDDir             = 0;
 			fvgDUpper           = 0;
@@ -1535,23 +1537,40 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ApexBridgeState.TodayTrades.Clear();
 		}
 
-		// Trailing stop de proteccion: cuando el trade lleva $200 de ganancia no realizada,
-		// activa un trailing stop de $200 desde el peak. Protege contra dar-back de MFE alto.
-		// Se activa una sola vez por trade (trailActivated se resetea en ResetForNewSession).
+		// Trailing protection bar-close: una vez el trade lleva $200+ de ganancia en bar close,
+		// si retrocede $200 desde el peak → ExitLong/Short al siguiente bar open.
+		// SetTrailStop/SetStopLoss NO modifican stops mid-trade en NT8 backtest → usar Exit.
 		private void ManageTrailStop()
 		{
-			if (Position.MarketPosition == MarketPosition.Flat) return;
-			if (trailActivated) return;
+			if (Position.MarketPosition == MarketPosition.Flat)
+			{
+				peakPnl        = 0;
+				trailActivated = false;
+				return;
+			}
 			if (string.IsNullOrEmpty(activeSignal)) return;
 
 			double pnl = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]);
-			if (pnl < 200) return;
+			if (pnl > peakPnl) peakPnl = pnl;
 
-			// Reemplaza el stop fijo con trailing de $200 desde el highest favorable price.
-			// En NT8, SetTrailStop con Currency rastrea desde la barra actual hacia adelante.
-			SetTrailStop(activeSignal, CalculationMode.Currency, 200, false);
-			trailActivated = true;
-			Print($"[TRAIL] ON sig={activeSignal} P&L={pnl:C} → trail $200 desde peak");
+			if (peakPnl < 200) return;
+
+			if (!trailActivated)
+			{
+				trailActivated = true;
+				Print($"[TRAIL] ARMED sig={activeSignal} peak={peakPnl:C}");
+			}
+
+			if (pnl < peakPnl - 200)
+			{
+				Print($"[TRAIL] EXIT pnl={pnl:C} peak={peakPnl:C} drop={peakPnl - pnl:C}");
+				if (Position.MarketPosition == MarketPosition.Long)
+					ExitLong(activeSignal);
+				else
+					ExitShort(activeSignal);
+				peakPnl        = 0;
+				trailActivated = false;
+			}
 		}
 
 		private void UpdateRiskGuards()
