@@ -13,7 +13,40 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 - **Bróker/feed:** Rithmic o Tradovate vía Apex.
 - Descartado: Python+API y TradingView+PickMyTrade.
 
-## Estrategia (sesión 18) — ENTRADAS CONGELADAS, foco en régimen ATR
+## Estrategia (sesión 19) — ENTRADAS CONGELADAS, FASE 3 COMPLETA
+> **Sesión 19 (2026-06-09): FASE 3 completa. 147 trades, 4 períodos. Hallazgo crítico: el edge no viene de los TPs.**
+>
+> **HALLAZGOS CRÍTICOS SESIÓN 19 — FASE 3 DIAGNÓSTICO (147 trades, 4 períodos IS+OOS)**
+>
+> **P1 — ACTIVE shorts (380-450): hipótesis, no validación concluyente**
+> - n=11 total en 3 de 4 períodos (OOS1 Jul-Sep 2025 = 0 trades ACTIVE short).
+> - PF=3.62 global: IS n=2 PF=∞, OOS2 n=6 PF=1.69, OOS3 n=3 PF=4.40.
+> - Patrón existe. No hay evidencia estadística suficiente para afirmar ventaja estructural.
+>
+> **P2 — MAE/MFE distribución: ACTIVE es el bucket más eficiente**
+> - ACTIVE MFE: p25=$294, p50=$732, p75=$1,050, p90=$1,050 (TP trunca). Precio llega al TP con frecuencia.
+> - MAE winners/losers: winners tienen MAE 2-4x menor que losers en todos los buckets. Patrón consistente.
+> - CHOP MFE p50=$181 — el precio no se mueve suficientemente ni en régimen de baja volatilidad.
+>
+> **P3 — Duración: tres patrones distintos**
+> - CHOP: todo dura (Win avg 358min). Mercado sin dirección.
+> - ACTIVE: resolución rápida (~131min mediana). El precio se mueve con decisión en ambas direcciones.
+> - STRONG: losers rápidos (95min avg = SL), winners duran toda sesión (249min avg).
+>
+> **P4 — HALLAZGO CRÍTICO: el edge NO viene de los TPs completos**
+> - 68 SL completos = -$25,500. 24 TP completos = +$25,200. Neto entre sí: -$300.
+> - TPs y SLs prácticamente se cancelan. El beneficio total (+$10,716) proviene de las 38 salidas intermedias.
+> - Top 20% de winners = 118% del neto total. Sin esos trades el sistema es negativo.
+> - Conclusión: el edge está en la distribución de resultados intermedios (session-close parciales), no en alcanzar el TP fijo.
+>
+> **IMPLICACIÓN para FASE 4:**
+> - No diseñar gestión adaptativa asumiendo que "más TPs = mejor resultado".
+> - El TP fijo de $1,050 no está generando el edge — está siendo neutralizado por los SLs.
+> - Investigar: ¿qué hace diferente a los trades que cierran en session-close con ganancia?
+>
+> Scripts FASE 3: `backtest/analyze_regime_atr.py` (buckets), `backtest/diagnose_regime.py` (diagnóstico profundo).
+> CSVs en `backtest/`: `is_jan_mar_2026.csv`, `oos_jul_sep_2025.csv`, `oos_oct_dec_2025.csv`, `oos_apr_jun_2026.csv`.
+
 > **Sesión 18 (2026-06-08): Diagnóstico de causa raíz. Proyecto cambia de "selección" a "adaptación al régimen".**
 > Sesión 17 backtest IS (Ene-Mar 2026 con fix SetupBMinMinutes=15): 46 trades, $4,645 neto.
 > Desglose mensual: ENE +$998 / FEB +$4,324 / MAR -$677.
@@ -132,22 +165,29 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
   ATR >450 PF=1.23 (positivo pero volátil — dirección macro modera). r=0.056 (régimen, no trade).
   Setup A = 4.3% de trades (2/46 IS). **Setup B = el sistema.**
   Proyecto: "selección de trades" → "adaptación al régimen".
-  **FASE 4 CHOP FILTER COMPLETA**: detect_chop.py → validate_chop_filter.py → implementación → validación IS+OOS.
-  Filtro implementado: `EnableATRRegimeFilter` + `ATRRegimeThreshold=300`. Validado IS y Jul-Sep 2025.
+  **CHOP FILTER COMPLETO**: `EnableATRRegimeFilter` + `ATRRegimeThreshold=300`. Validado IS y Jul-Sep 2025.
   Scripts: `backtest/detect_chop.py`, `backtest/validate_chop_filter.py`, `backtest/analyze_regime_atr.py`.
-  FASE 3 pendiente (CSVs OOS Trades tab).
+- **Sesión 19**: FASE 3 completa. Diagnóstico profundo 147 trades × 4 períodos.
+  **HALLAZGO PRINCIPAL**: 68 SL ($-25,500) vs 24 TP ($+25,200) se cancelan. Edge = salidas intermedias.
+  ACTIVE-short: hipótesis válida (n=11), no validada estadísticamente. OOS1 = 0 trades ACTIVE short.
+  Duración: ACTIVE más eficiente (131min mediana). STRONG: losers rápidos, winners toda la sesión.
+  Script: `backtest/diagnose_regime.py`. CSVs en `backtest/` (4 períodos).
+  **FASE 3 CERRADA**. Próximo: diseño FASE 4 gestión adaptativa.
 
 ## Pendiente / roadmap
 
-### ACTIVO — FASE 3 (bloqueado por export usuario)
-1. **[BLOQUEADO USUARIO]** Re-exportar OOS como pestaña "Trades" (NO Daily, NO Performance):
-   NT8 Strategy Analyzer → backtest → tab "Trades" → botón Export/guardar → CSV con separador ";"
-   Columnas requeridas: Trade Number, Market Pos., Entry Name, Entry Time, Exit Name, Profit, MAE, MFE.
-   Períodos: Jul-Sep 2025 / Oct-Dec 2025 / Apr-Jun 2026.
-2. Con los 3 CSVs: correr `backtest/analyze_regime_atr.py` con los 4 CSVs (IS + 3 OOS).
-   Objetivo: matriz ATR Bucket × Dirección Macro × Setup × Long/Short.
-3. **[POST-FASE 3]** FASE 4: Propuestas gestión adaptativa (targets/stops × ATR, parciales, régimen dinámico).
-   NO implementar hasta cerrar FASE 3.
+### ACTIVO — FASE 4 (diseño gestión adaptativa)
+> FASE 3 cerrada. Evidencia base establecida. Regla: diseñar FASE 4 desde los datos, no desde intuición.
+>
+> **Pregunta central FASE 4**: si el edge está en salidas intermedias (session-close parciales), ¿qué gestión
+> maximiza esas salidas sin destruir la distribución de resultados que ya funciona?
+>
+> Hipótesis a investigar (NO implementar hasta validar):
+> 1. ¿TP adaptativo por ATR mejora el net manteniendo el edge en salidas intermedias?
+> 2. ¿Time stop (exit a X minutos si MFE < Y) captura más del edge intermedio?
+> 3. ¿Partial exit (escalar contratos) mejora el perfil de salidas sin romper las Apex rules?
+>
+> NO implementar hasta: diseño → backtest → validación IS+OOS.
 
 ### FREEZE activo
 - NO modificar Setup A, Setup B, stops ($375), targets ($1050), parámetros de entrada.
