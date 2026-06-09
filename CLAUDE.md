@@ -13,7 +13,22 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 - **Bróker/feed:** Rithmic o Tradovate vía Apex.
 - Descartado: Python+API y TradingView+PickMyTrade.
 
-## Estrategia (sesión 19) — ENTRADAS CONGELADAS, FASE 3 COMPLETA
+## Estrategia (sesión 20) — ENTRADAS CONGELADAS, FASE 4 COMPLETA, LISTO PARA SIM
+> **Sesión 20 (2026-06-09): FASE 4 cerrada. Bugs pre-Sim corregidos. Código listo para carga en NT8 Sim.**
+>
+> **BUGS ENCONTRADOS Y CORREGIDOS EN AUDITORÍA PRE-SIM (sesión 20)**
+> - `SetupBMinMinutes` default 0→15: el parámetro existía pero el default no reflejaba el valor validado en backtests.
+>   Sin fix: B dispararía a 9:31 en Sim (contradice todos los backtests que usaron 15 vía UI manual).
+> - Gate min-time ausente en `TryDetectSweepB()`: parámetro declarado pero nunca evaluado en la función.
+>   Añadido bloque simétrico al max-time ya existente.
+> - `sweepState15m == 0` faltaba en call-site de B: sin este check, B competía con A durante la ventana
+>   entre sweep 15m detectado (sweepState15m=1) y setup armado (setupState=1). Añadido al gate de llamada.
+>
+> **Validación 5 períodos tras agregar ene-jul 2024:**
+> - 237 trades totales, ene 2024 – jun 2026 (2.5 años).
+> - SESSION_CLOSE: n=112, WR=68.8%, PF=5.13, Net=+$20,559. Edge estructural confirmado.
+> - H2c (CHOP∩T2) descartada: n=9 muestra WR=44% Net=+$575 — n=3 era coincidencia.
+>
 > **Sesión 19 (2026-06-09): FASE 3 completa. 147 trades, 4 períodos. Hallazgo crítico: el edge no viene de los TPs.**
 >
 > **HALLAZGOS CRÍTICOS SESIÓN 19 — FASE 3 DIAGNÓSTICO (147 trades, 4 períodos IS+OOS)**
@@ -191,58 +206,38 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
 
 ## Pendiente / roadmap
 
-### ACTIVO — FASE 4 (gestión que preserve SESSION_CLOSE)
-> FASE 3 + diagnóstico causal cerrados. El edge ES SESSION_CLOSE. Regla de oro para FASE 4:
-> **cualquier propuesta debe demostrar que no daña Net/WR/PF de SESSION_CLOSE antes de implementarse.**
+### ACTIVO — SIM (validación en mercado vivo)
+> **FASE 4 cerrada. Código auditado. Sistema en NT8 Sim.**
 >
-> Pregunta central: "¿Cómo preservamos o mejoramos el mecanismo SESSION_CLOSE?"
+> **Regla SIM: no optimizar, no modificar, no añadir filtros. Solo observar.**
 >
-> **ESTADO HIPÓTESIS (sesión 19 FASE 4):**
+> **Métricas de monitoreo (prioridad):**
+> 1. Net SESSION_CLOSE — ¿sigue siendo el exit dominante?
+> 2. WR SESSION_CLOSE — baseline: 68.8% (n=112, 2024-2026)
+> 3. PF SESSION_CLOSE — baseline: 5.13
+> 4. Distribución exit type: TP_FULL / SL_FULL / SESSION_CLOSE en proporción similar al backtest
 >
-> **H1 — Anatomía SC losers** ✅ CERRADA
-> - SC losers vs winners: CHOP 53% vs 29%, T2 41% vs 11%, MAE/MFE ratio 7.70 vs 0.34.
-> - Señal: intersección CHOP ∩ T2 como zona problemática. No es filtro — es diagnóstico.
-> - Script: `backtest/analyze_sc_losers.py`
+> **Hipótesis FASE 4 (cerradas, documentadas):**
+> - H1 anatomía SC losers ✅ cerrada (diagnóstico: CHOP+T2 zona de riesgo)
+> - H2a filtro CHOP SC ❌ descartada (Net SC↓$2,885)
+> - H2b filtro T2 completo ❌ descartada (Net SC↓$1,015)
+> - H2c filtro CHOP∩T2 ❌ descartada (n=9 con 2024: WR=44% Net=+$575, no patrón)
 >
-> **H2b — Filtro T2 completo** ❌ DESCARTADA
-> - Eliminar todos los T2 (n=24): WR↑ PF↑ Net SC↓$1,015. T2 sigue siendo rentable.
-> - Script: `backtest/h2b_t2_filter.py`
+> **Evidencia acumulada (5 períodos, 237 trades, ene2024-jun2026):**
+> - SESSION_CLOSE: n=112, WR=68.8%, PF=5.13, Net=+$20,559
+> - Sistema: WR=43.9%, PF=1.29, Net=+$12,159
+> - TP y SL se neutralizan entre sí. El edge es SESSION_CLOSE, no los TP fijos.
 >
-> **H2a — Filtro CHOP SC completo** ❌ DESCARTADA
-> - Eliminar SC CHOP (n=20): WR↑ PF↑ Net SC↓$2,885. CHOP SC PF=3.32, positivo.
-> - Hallazgo clave: SC CHOP T2 = 0 winners, 3 losers (señal para H2c).
-> - Script: `backtest/h2a_chop_sc.py`
->
-> **H2c — Filtro CHOP∩T2 SC** ❌ DESCARTADA (extendida con 2024)
-> - Con n=3 (jul 2025 - jun 2026): WR=0%, Net=-$335 — prometedora pero insuficiente.
-> - Con n=9 (ene 2024 - jun 2026): WR=44%, Net=+$575 — **el patrón no existe**.
-> - Cross-period n=9: OOS1 ✅, OOS2 ✅, EXT ❌ (6 trades +$910 eliminados = daño neto).
-> - Conclusión: n=3 "todos perdedores" era coincidencia estadística. No hay señal estructural.
-> - Script: `backtest/h2c_chop_t2_sc.py` | Datos validación: `backtest/oos_jan_jul_2024.csv`
->
-> **Mapa SC por bucket × tercio (referencia):**
-> - CHOP T2: WR=0% n=3 Net=-$335 ← target H2c
-> - WEAK T2: WR=67% n=3 Net=+$695 (OK)
-> - ACTV T2: WR=100% n=1 Net=+$601 (OK)
-> - STRG T2: WR=25% n=4 Net=+$54 (débil, posible H2d — necesita más datos)
-> - STRG T1: WR=100% n=10 Net=+$4,167 (núcleo del edge en STRONG)
->
-> **Resultado 5 períodos (ene 2024 – jun 2026, 237 trades):**
-> - SC: n=112, WR=68.8%, Net=+$20,559, PF=5.13. Edge robusto en 2.5 años.
-> - Sistema global: Net=+$12,159, PF=1.29. Positivo cross-period.
->
-> **Estado FASE 4 — hipótesis derivadas de SC losers agotadas:**
-> - Ángulo CHOP∩T2 explorado y descartado. No existe patrón explotable.
-> - Siguiente nivel: nueva hipótesis o avanzar a Sim.
-> NO implementar hasta: propuesta → backtest counterfactual → validación IS+OOS.
+> **Scripts FASE 4:** `backtest/analyze_sc_losers.py`, `backtest/h2a_chop_sc.py`,
+> `backtest/h2b_t2_filter.py`, `backtest/h2c_chop_t2_sc.py`
 
 ### FREEZE activo
 - NO modificar Setup A, Setup B, stops ($375), targets ($1050), parámetros de entrada.
 - NO agregar nuevos filtros más allá del ATR CHOP ya implementado.
 - NO Sim ni Eval hasta completar FASE 3 + FASE 4 gestión adaptativa.
 
-### ON HOLD durante validación
-- Apex eval/Sim: pospuesto hasta resolver arquitectura de gestión por régimen.
+### ON HOLD durante Sim
+- Apex Eval: pospuesto hasta completar Sim satisfactorio.
 - TP "siguiente liquidez": pospuesto.
 
 ### Infraestructura (baja prioridad)
