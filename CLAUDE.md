@@ -213,13 +213,12 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
 > - Hallazgo clave: SC CHOP T2 = 0 winners, 3 losers (señal para H2c).
 > - Script: `backtest/h2a_chop_sc.py`
 >
-> **H2c — Filtro CHOP∩T2 SC** ⚠️ PROMETEDORA NO VALIDADA
-> - Eliminar SC CHOP∩T2 (n=3): WR+4pp ✅ PF+0.86 ✅ Net+$335 ✅ MaxDD sin cambio ✅.
-> - Cross-period: OOS1 ✅ OOS2 ✅ IS/OOS3 neutro (0 trades afectados).
-> - Convergencia triple: H1 (T2=41% losers) + H2b (T2 inferior) + H2a anatomy (CHOP T2=0 winners).
-> - **PROBLEMA: n=3, todos perdedores. Insuficiente para implementar.**
-> - Próximo paso: extender histórico NT8 pre-jul 2025 para buscar más instancias CHOP T2.
-> - Script: `backtest/h2c_chop_t2_sc.py`
+> **H2c — Filtro CHOP∩T2 SC** ❌ DESCARTADA (extendida con 2024)
+> - Con n=3 (jul 2025 - jun 2026): WR=0%, Net=-$335 — prometedora pero insuficiente.
+> - Con n=9 (ene 2024 - jun 2026): WR=44%, Net=+$575 — **el patrón no existe**.
+> - Cross-period n=9: OOS1 ✅, OOS2 ✅, EXT ❌ (6 trades +$910 eliminados = daño neto).
+> - Conclusión: n=3 "todos perdedores" era coincidencia estadística. No hay señal estructural.
+> - Script: `backtest/h2c_chop_t2_sc.py` | Datos validación: `backtest/oos_jan_jul_2024.csv`
 >
 > **Mapa SC por bucket × tercio (referencia):**
 > - CHOP T2: WR=0% n=3 Net=-$335 ← target H2c
@@ -228,11 +227,13 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
 > - STRG T2: WR=25% n=4 Net=+$54 (débil, posible H2d — necesita más datos)
 > - STRG T1: WR=100% n=10 Net=+$4,167 (núcleo del edge en STRONG)
 >
-> **Regla de validación H2c antes de implementar:**
-> - Extender backtesting a ≥2024 en NT8 para n≥10 instancias CHOP T2.
-> - Si patrón persiste (CHOP T2 WR<30%) → implementar en NinjaScript como gate de entrada.
-> - Si patrón desaparece → era ruido. Descartar.
+> **Resultado 5 períodos (ene 2024 – jun 2026, 237 trades):**
+> - SC: n=112, WR=68.8%, Net=+$20,559, PF=5.13. Edge robusto en 2.5 años.
+> - Sistema global: Net=+$12,159, PF=1.29. Positivo cross-period.
 >
+> **Estado FASE 4 — hipótesis derivadas de SC losers agotadas:**
+> - Ángulo CHOP∩T2 explorado y descartado. No existe patrón explotable.
+> - Siguiente nivel: nueva hipótesis o avanzar a Sim.
 > NO implementar hasta: propuesta → backtest counterfactual → validación IS+OOS.
 
 ### FREEZE activo

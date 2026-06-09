@@ -195,12 +195,12 @@ def delta_row(label, base, alt, width=30):
 # ─── main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    if len(sys.argv) < 5:
-        print("Uso: python h2c_chop_t2_sc.py IS:csv OOS1:csv OOS2:csv OOS3:csv")
+    if len(sys.argv) < 2:
+        print("Uso: python h2c_chop_t2_sc.py LABEL:csv [LABEL2:csv ...]")
         sys.exit(1)
 
     periods = []
-    for arg in sys.argv[1:5]:
+    for arg in sys.argv[1:]:
         label, path = arg.split(":", 1)
         periods.append((label, path))
 
