@@ -39,12 +39,27 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 > - Top 20% de winners = 118% del neto total. Sin esos trades el sistema es negativo.
 > - Conclusión: el edge está en la distribución de resultados intermedios (session-close parciales), no en alcanzar el TP fijo.
 >
-> **IMPLICACIÓN para FASE 4:**
-> - No diseñar gestión adaptativa asumiendo que "más TPs = mejor resultado".
-> - El TP fijo de $1,050 no está generando el edge — está siendo neutralizado por los SLs.
-> - Investigar: ¿qué hace diferente a los trades que cierran en session-close con ganancia?
+> **HALLAZGO CAUSAL DEFINITIVO — SESSION_CLOSE ES EL EDGE (sesión 19 diagnóstico final)**
 >
-> Scripts FASE 3: `backtest/analyze_regime_atr.py` (buckets), `backtest/diagnose_regime.py` (diagnóstico profundo).
+> Análisis `analyze_intermediate_exits.py` sobre 147 trades × 4 períodos:
+> - TP_FULL (n=24): +$25,200 (+235% del neto). SL_FULL (n=68): -$25,500 (-238%). Se cancelan.
+> - SESSION_CLOSE (n=55): WR=69.1%, PF=5.47, Net=+$11,016 → **+103% del neto total**.
+> - SESSION_CLOSE funciona en TODOS los buckets: CHOP PF=3.32, WEAK PF=9.77, ACTIVE PF=8.50, STRONG PF=6.44.
+> - El 84% de SESSION_CLOSE entra en T1 (9:30–10:20 ET). Corre 374min (mediana 382min).
+>
+> **Contrafactual Q7 (Cat A=0, Cat B=38, Cat C=17):**
+> - Cat A=0: ningún SESSION_CLOSE fue cortado antes de llegar al TP. TP y SESSION_CLOSE no compiten.
+> - Cat B=38 (+$13,478): el mercado nunca llegó al TP. La sesión capturó todo lo disponible.
+> - Cat C=17 (-$2,462 vs -$6,375): SESSION_CLOSE ahorró $3,913 en pérdidas vs esperar SL completo.
+>
+> **SESSION_CLOSE no es un exit de conveniencia. Es un mecanismo adaptativo implícito.**
+> Adapta el resultado a lo que el mercado entregó durante la sesión. No corta ganadores, no abandona dinero.
+>
+> **RESTRICCIÓN FASE 4:** cualquier modificación debe demostrar que mejora (o no daña) el mecanismo SESSION_CLOSE.
+> La carga de la prueba: quien proponga cambiar TP, SL, escalar contratos o agregar filtros debe demostrar
+> que el Net SESSION_CLOSE, WR SESSION_CLOSE y PF SESSION_CLOSE no empeoran.
+>
+> Scripts: `backtest/analyze_regime_atr.py`, `backtest/diagnose_regime.py`, `backtest/analyze_intermediate_exits.py`.
 > CSVs en `backtest/`: `is_jan_mar_2026.csv`, `oos_jul_sep_2025.csv`, `oos_oct_dec_2025.csv`, `oos_apr_jun_2026.csv`.
 
 > **Sesión 18 (2026-06-08): Diagnóstico de causa raíz. Proyecto cambia de "selección" a "adaptación al régimen".**
@@ -167,27 +182,28 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
   Proyecto: "selección de trades" → "adaptación al régimen".
   **CHOP FILTER COMPLETO**: `EnableATRRegimeFilter` + `ATRRegimeThreshold=300`. Validado IS y Jul-Sep 2025.
   Scripts: `backtest/detect_chop.py`, `backtest/validate_chop_filter.py`, `backtest/analyze_regime_atr.py`.
-- **Sesión 19**: FASE 3 completa. Diagnóstico profundo 147 trades × 4 períodos.
-  **HALLAZGO PRINCIPAL**: 68 SL ($-25,500) vs 24 TP ($+25,200) se cancelan. Edge = salidas intermedias.
-  ACTIVE-short: hipótesis válida (n=11), no validada estadísticamente. OOS1 = 0 trades ACTIVE short.
-  Duración: ACTIVE más eficiente (131min mediana). STRONG: losers rápidos, winners toda la sesión.
-  Script: `backtest/diagnose_regime.py`. CSVs en `backtest/` (4 períodos).
-  **FASE 3 CERRADA**. Próximo: diseño FASE 4 gestión adaptativa.
+- **Sesión 19**: FASE 3 completa + diagnóstico causal definitivo. 147 trades × 4 períodos.
+  **HALLAZGO CENTRAL**: SESSION_CLOSE genera +103% del neto. TP y SL se cancelan entre sí.
+  Contrafactual Q7: Cat A=0 (TP no corta SESSION_CLOSE), Cat B=38 (+$13,478), Cat C ahorra $3,913.
+  SESSION_CLOSE es el mecanismo adaptativo implícito del sistema — no un exit accidental.
+  Scripts: `backtest/diagnose_regime.py`, `backtest/analyze_intermediate_exits.py`.
+  **FASE 3 CERRADA**. FASE 4: cualquier propuesta debe preservar el mecanismo SESSION_CLOSE.
 
 ## Pendiente / roadmap
 
-### ACTIVO — FASE 4 (diseño gestión adaptativa)
-> FASE 3 cerrada. Evidencia base establecida. Regla: diseñar FASE 4 desde los datos, no desde intuición.
+### ACTIVO — FASE 4 (gestión que preserve SESSION_CLOSE)
+> FASE 3 + diagnóstico causal cerrados. El edge ES SESSION_CLOSE. Regla de oro para FASE 4:
+> **cualquier propuesta debe demostrar que no daña Net/WR/PF de SESSION_CLOSE antes de implementarse.**
 >
-> **Pregunta central FASE 4**: si el edge está en salidas intermedias (session-close parciales), ¿qué gestión
-> maximiza esas salidas sin destruir la distribución de resultados que ya funciona?
+> Pregunta central: "¿Cómo preservamos o mejoramos el mecanismo SESSION_CLOSE?"
 >
-> Hipótesis a investigar (NO implementar hasta validar):
-> 1. ¿TP adaptativo por ATR mejora el net manteniendo el edge en salidas intermedias?
-> 2. ¿Time stop (exit a X minutos si MFE < Y) captura más del edge intermedio?
-> 3. ¿Partial exit (escalar contratos) mejora el perfil de salidas sin romper las Apex rules?
+> Hipótesis candidatas (NO implementar hasta validar con backtest IS+OOS):
+> 1. Activar `EnableATRRegimeFilter=true` (ATR<300 → no operar). Efecto SESSION_CLOSE: a analizar.
+>    Evidencia: CHOP SESSION_CLOSE PF=3.32 — filtrar CHOP podría eliminar SESSION_CLOSE con edge.
+> 2. ¿Time stop selectivo? Solo para trades con MFE bajo después de X minutos (posibles SL lentos).
+> 3. ¿Modificar KillZoneEnd? SESSION_CLOSE entra principalmente en T1 (9:30-10:20). T2/T3 = menor edge.
 >
-> NO implementar hasta: diseño → backtest → validación IS+OOS.
+> NO implementar hasta: propuesta → backtest counterfactual → validación IS+OOS.
 
 ### FREEZE activo
 - NO modificar Setup A, Setup B, stops ($375), targets ($1050), parámetros de entrada.
