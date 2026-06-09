@@ -129,6 +129,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 		public int SetupBMaxMinutes { get; set; }
 
 		[NinjaScriptProperty]
+		[Display(Name = "Setup B: minutos min despues de KillZoneStart (15=esperar primera barra 15m)", Order = 231, GroupName = "3. Horario")]
+		[Range(0, 60)]
+		public int SetupBMinMinutes { get; set; }
+
+		[NinjaScriptProperty]
 		[Display(Name = "Filtro sesgo diario (premarket vs cierre ayer)", Order = 24, GroupName = "2. Estrategia")]
 		public bool EnableDailyBiasFilter { get; set; }
 
@@ -184,6 +189,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 		public double BiasOvernightThreshold { get; set; }
 
 		[NinjaScriptProperty]
+		[Display(Name = "Filtro tendencia diaria (no long si ayer bajo, no short si ayer subio)", Order = 355, GroupName = "2. Estrategia")]
+		public bool EnableDailyTrendFilter { get; set; }
+
+		[NinjaScriptProperty]
 		[Display(Name = "Habilitar Setup D (FVG 15m sin barrida previa)", Order = 36, GroupName = "2. Estrategia")]
 		public bool EnableSetupD { get; set; }
 
@@ -199,10 +208,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Escribir diagnostico a archivo", Order = 39, GroupName = "9. Debug")]
 		public bool EnableFileLog { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Filtro regimen ATR20D (CHOP = no operar)", Order = 40, GroupName = "2. Estrategia")]
+		public bool EnableATRRegimeFilter { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(100, 600)]
+		[Display(Name = "Umbral ATR20D CHOP (default 300)", Order = 41, GroupName = "2. Estrategia")]
+		public double ATRRegimeThreshold { get; set; }
 		#endregion
 
 		#region Estado interno
-		private ATR atr15m;
+		private ATR    atr15m;
+		private ATR    atr20d;           // ATR diario para filtro de régimen CHOP
+		private double _atr20dSession;   // Capturado al cierre de la barra diaria anterior
+		private bool   _loggedATRRegime;
 		private EMA    ema9_15m;       // EMA rapida 15m (usada si EnableEmaFilter=true)
 		private EMA    ema21_15m;      // EMA lenta 15m
 		private EMA    ema20_daily;    // EMA20 diaria (inicializada pero no usada para bias — muy lenta)
@@ -223,8 +244,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		// Rango pre-apertura (.md §4): high/low desde apertura de sesion hasta 9:30 ET.
 		// Son los niveles de liquidez que la barrida debe perforar y recuperar.
-		private double preMarketHigh;
-		private double preMarketLow;
+		private double preMarketHigh = double.MinValue;
+		private double preMarketLow  = double.MaxValue;
 		private bool   preMarketReady;    // true desde que cierra la ventana pre-apertura
 		private bool   preMarketAttempted; // fallback 15m intentado (corre 1 vez por sesion)
 
@@ -374,8 +395,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				MinBodyTicks         = 6;
 				SetupBRequiresTrend  = false;
 				EnableDailyBiasFilter = false; // backtest: filter elimina TPs buenos → peor resultado global
+				EnableDailyTrendFilter = false;
 				PreMarketStartTime   = 800;
 				SetupBMaxMinutes     = 0;
+				SetupBMinMinutes     = 0;
 				EnableSetupC         = false;
 				MinOBBodyTicks       = 20;
 				OBValidBars          = 45;
@@ -383,7 +406,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				Allow2ndTradeIfWinner = false; // spec v2: 1 trade/dia por defecto
 				EnableEmaFilter      = false;
 				MinPreMarketRange    = 0.0;
-				MinTradeScore        = 35;    // minimo: aceptar casi todo para ver frecuencia real
+				MinTradeScore        = 35;    // minimo para Setup A; B tiene su propio filtro de cuerpo
 				BiasOvernightThreshold = 0;
 				MaxStructuralRiskUsd = 0;
 				EnableSetupD         = false;
@@ -395,6 +418,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 				StartingBalance      = 50000;
 				TrailingDrawdown     = 2500;
 				MaxDailyLoss         = 400;   // spec: 1 stop loss ($375) + slippage = stop el dia
+				EnableATRRegimeFilter = false; // off por default — activar tras validación backtest
+				ATRRegimeThreshold    = 300;   // ATR20D < 300 = CHOP (validado FASE 4)
 			}
 			else if (State == State.Configure)
 			{
@@ -412,6 +437,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ema9_15m         = EMA(BarsArray[1], 9);
 				ema21_15m        = EMA(BarsArray[1], 21);
 				ema20_daily      = EMA(BarsArray[2], 20);
+				atr20d           = ATR(BarsArray[2], 20);
 				accountHighWater = StartingBalance;
 				Print("=== ApexNqIctStrategy v3-LATCH LOADED === (compile OK)");
 				if (EnableFileLog)
@@ -454,6 +480,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				prevDayClose2 = prevDayClose1;
 				prevDayClose1 = Close[0];
+				if (CurrentBars[2] >= 20)
+					_atr20dSession = atr20d[0];
 				string bias = prevDayClose1 > prevDayClose2 ? "BULL" : prevDayClose1 < prevDayClose2 ? "BEAR" : "NEUTRAL";
 				Print($"[DAILY] Cierre={prevDayClose1:F0} AntAyer={prevDayClose2:F0} → sesgo manana: {bias}");
 				return;
@@ -692,6 +720,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private void TryDetectSetup15m()
 		{
+			if (EnableATRRegimeFilter && _atr20dSession > 0 && _atr20dSession < ATRRegimeThreshold)
+			{
+				if (!_loggedATRRegime)
+				{ Print($"[ATR-REGIME] ATR20D={_atr20dSession:F0} < {ATRRegimeThreshold:F0} → CHOP, no operar hoy"); _loggedATRRegime = true; }
+				return;
+			}
 			// DIAGNOSTICO: imprimir estado de todos los gates en cada barra 15m
 			L($"[DIAG-15m] {Times[1][0]:MM/dd HH:mm} setup={setupState} traded={tradedToday} disabled={tradingDisabled} near={nearDrawdown} bridgeON={ApexBridgeState.TradingEnabled} pmReady={preMarketReady} sweepSt={sweepState15m} trend={trend} pmL={preMarketLow:F0} pmH={preMarketHigh:F0}");
 
@@ -850,6 +884,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 						if (dailyBiasDir == -1)
 						{ Print("[BIAS] Sesgo overnight BEAR -> LONG bloqueado"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
+						if (EnableDailyTrendFilter && prevDayClose1 > 0 && prevDayClose2 > 0 && prevDayClose1 > prevDayClose2)
+						{ Print("[TREND-D] Ayer alcista → LONG Setup A bloqueado (ICT AMD)"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+
 						int score = CalcTradeScore(1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
 						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
@@ -930,6 +967,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 					{
 						if (dailyBiasDir == 1)
 						{ Print("[BIAS] Sesgo overnight BULL -> SHORT bloqueado"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+
+						// Shorts no bloqueados por EnableDailyTrendFilter: WR positivo en días alcistas Y bajistas.
 
 						int score = CalcTradeScore(-1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
@@ -1069,6 +1108,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			if (!ApexBridgeState.TradingEnabled) return;
 			if (nearDrawdown) return;
+			if (EnableATRRegimeFilter && _atr20dSession > 0 && _atr20dSession < ATRRegimeThreshold) return;
 
 			double minSweep = MinSweepTicks * TickSize;
 			double minBody  = MinBodyTicks  * TickSize;
@@ -1105,6 +1145,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 				double e21 = ema21_15m[0];
 				if (e9 > e21) shortOk = false;
 				if (e9 < e21) longOk  = false;
+			}
+
+			// Filtro tendencia diaria ICT (AMD): después de un día ALCISTA, los longs de barrida fallan.
+			// Lógica ICT: día up = smart money distribuyendo. Barrida de mínimo al día siguiente = trampa.
+			// Día down = smart money acumulando. Barrida siguiente = manipulación antes de distribución UP.
+			// ASIMÉTRICO: solo bloquea longs en días alcistas. Shorts funcionan en ambas condiciones.
+			if (EnableDailyTrendFilter && prevDayClose1 > 0 && prevDayClose2 > 0)
+			{
+				if (prevDayClose1 > prevDayClose2) longOk = false;
+				string trendLbl = prevDayClose1 > prevDayClose2 ? "ALCISTA" : "BAJISTA";
+				if (!_loggedDailyBias)
+					Print($"[TREND-D] Ayer {trendLbl} ({prevDayClose1:F0} vs {prevDayClose2:F0}) → longOk={longOk}");
 			}
 
 			// Filtro legacy premarket vs RTH close (desactivado por defecto).
@@ -1498,6 +1550,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			sweepFvgU           = 0;
 			_loggedTrendZero    = false;
 			_loggedDailyBias    = false;
+			_loggedATRRegime    = false;
 			preMarketHigh       = double.MinValue;
 			preMarketLow        = double.MaxValue;
 			preMarketLastClose  = 0;
