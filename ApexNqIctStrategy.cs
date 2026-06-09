@@ -398,7 +398,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				EnableDailyTrendFilter = false;
 				PreMarketStartTime   = 800;
 				SetupBMaxMinutes     = 0;
-				SetupBMinMinutes     = 0;
+				SetupBMinMinutes     = 15;
 				EnableSetupC         = false;
 				MinOBBodyTicks       = 20;
 				OBValidBars          = 45;
@@ -620,8 +620,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			}
 
 			// Setup B en 1m: sweep del rango pre-mercado con filtros de calidad.
+			// sweepState15m==0: si A ya detectó barrida 15m, B no dispara (no competir con A en progreso).
 			if (EnableSetupB && preMarketReady && inKillZone
-			    && !tradedToday && !tradingDisabled && setupState == 0)
+			    && !tradedToday && !tradingDisabled && setupState == 0 && sweepState15m == 0)
 				TryDetectSweepB();
 
 			// Setup D en 1m: entrar cuando precio retrocede al FVG detectado en 15m.
@@ -1168,7 +1169,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 				if (midRange < biasRef) longOk  = false;
 			}
 
-			// Filtro horario: solo primeros SetupBMaxMinutes del kill zone.
+			// Filtro horario mínimo: esperar SetupBMinMinutes antes de permitir B (da tiempo a A de armar setup 15m).
+			if (SetupBMinMinutes > 0)
+			{
+				var kzStart = new DateTime(Time[0].Year, Time[0].Month, Time[0].Day,
+				                          KillZoneStart / 100, KillZoneStart % 100, 0);
+				if (Time[0] < kzStart.AddMinutes(SetupBMinMinutes)) return;
+			}
+
+			// Filtro horario máximo: solo primeros SetupBMaxMinutes del kill zone.
 			if (SetupBMaxMinutes > 0)
 			{
 				var kzStart = new DateTime(Time[0].Year, Time[0].Month, Time[0].Day,
