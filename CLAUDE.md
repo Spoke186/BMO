@@ -197,12 +197,43 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
 >
 > Pregunta central: "¿Cómo preservamos o mejoramos el mecanismo SESSION_CLOSE?"
 >
-> Hipótesis candidatas (NO implementar hasta validar con backtest IS+OOS):
-> 1. Activar `EnableATRRegimeFilter=true` (ATR<300 → no operar). Efecto SESSION_CLOSE: a analizar.
->    Evidencia: CHOP SESSION_CLOSE PF=3.32 — filtrar CHOP podría eliminar SESSION_CLOSE con edge.
-> 2. ¿Time stop selectivo? Solo para trades con MFE bajo después de X minutos (posibles SL lentos).
-> 3. ¿Modificar KillZoneEnd? SESSION_CLOSE entra principalmente en T1 (9:30-10:20). T2/T3 = menor edge.
+> **ESTADO HIPÓTESIS (sesión 19 FASE 4):**
 >
+> **H1 — Anatomía SC losers** ✅ CERRADA
+> - SC losers vs winners: CHOP 53% vs 29%, T2 41% vs 11%, MAE/MFE ratio 7.70 vs 0.34.
+> - Señal: intersección CHOP ∩ T2 como zona problemática. No es filtro — es diagnóstico.
+> - Script: `backtest/analyze_sc_losers.py`
+>
+> **H2b — Filtro T2 completo** ❌ DESCARTADA
+> - Eliminar todos los T2 (n=24): WR↑ PF↑ Net SC↓$1,015. T2 sigue siendo rentable.
+> - Script: `backtest/h2b_t2_filter.py`
+>
+> **H2a — Filtro CHOP SC completo** ❌ DESCARTADA
+> - Eliminar SC CHOP (n=20): WR↑ PF↑ Net SC↓$2,885. CHOP SC PF=3.32, positivo.
+> - Hallazgo clave: SC CHOP T2 = 0 winners, 3 losers (señal para H2c).
+> - Script: `backtest/h2a_chop_sc.py`
+>
+> **H2c — Filtro CHOP∩T2 SC** ❌ DESCARTADA (extendida con 2024)
+> - Con n=3 (jul 2025 - jun 2026): WR=0%, Net=-$335 — prometedora pero insuficiente.
+> - Con n=9 (ene 2024 - jun 2026): WR=44%, Net=+$575 — **el patrón no existe**.
+> - Cross-period n=9: OOS1 ✅, OOS2 ✅, EXT ❌ (6 trades +$910 eliminados = daño neto).
+> - Conclusión: n=3 "todos perdedores" era coincidencia estadística. No hay señal estructural.
+> - Script: `backtest/h2c_chop_t2_sc.py` | Datos validación: `backtest/oos_jan_jul_2024.csv`
+>
+> **Mapa SC por bucket × tercio (referencia):**
+> - CHOP T2: WR=0% n=3 Net=-$335 ← target H2c
+> - WEAK T2: WR=67% n=3 Net=+$695 (OK)
+> - ACTV T2: WR=100% n=1 Net=+$601 (OK)
+> - STRG T2: WR=25% n=4 Net=+$54 (débil, posible H2d — necesita más datos)
+> - STRG T1: WR=100% n=10 Net=+$4,167 (núcleo del edge en STRONG)
+>
+> **Resultado 5 períodos (ene 2024 – jun 2026, 237 trades):**
+> - SC: n=112, WR=68.8%, Net=+$20,559, PF=5.13. Edge robusto en 2.5 años.
+> - Sistema global: Net=+$12,159, PF=1.29. Positivo cross-period.
+>
+> **Estado FASE 4 — hipótesis derivadas de SC losers agotadas:**
+> - Ángulo CHOP∩T2 explorado y descartado. No existe patrón explotable.
+> - Siguiente nivel: nueva hipótesis o avanzar a Sim.
 > NO implementar hasta: propuesta → backtest counterfactual → validación IS+OOS.
 
 ### FREEZE activo
