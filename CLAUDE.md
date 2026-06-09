@@ -197,11 +197,41 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
 >
 > Pregunta central: "¿Cómo preservamos o mejoramos el mecanismo SESSION_CLOSE?"
 >
-> Hipótesis candidatas (NO implementar hasta validar con backtest IS+OOS):
-> 1. Activar `EnableATRRegimeFilter=true` (ATR<300 → no operar). Efecto SESSION_CLOSE: a analizar.
->    Evidencia: CHOP SESSION_CLOSE PF=3.32 — filtrar CHOP podría eliminar SESSION_CLOSE con edge.
-> 2. ¿Time stop selectivo? Solo para trades con MFE bajo después de X minutos (posibles SL lentos).
-> 3. ¿Modificar KillZoneEnd? SESSION_CLOSE entra principalmente en T1 (9:30-10:20). T2/T3 = menor edge.
+> **ESTADO HIPÓTESIS (sesión 19 FASE 4):**
+>
+> **H1 — Anatomía SC losers** ✅ CERRADA
+> - SC losers vs winners: CHOP 53% vs 29%, T2 41% vs 11%, MAE/MFE ratio 7.70 vs 0.34.
+> - Señal: intersección CHOP ∩ T2 como zona problemática. No es filtro — es diagnóstico.
+> - Script: `backtest/analyze_sc_losers.py`
+>
+> **H2b — Filtro T2 completo** ❌ DESCARTADA
+> - Eliminar todos los T2 (n=24): WR↑ PF↑ Net SC↓$1,015. T2 sigue siendo rentable.
+> - Script: `backtest/h2b_t2_filter.py`
+>
+> **H2a — Filtro CHOP SC completo** ❌ DESCARTADA
+> - Eliminar SC CHOP (n=20): WR↑ PF↑ Net SC↓$2,885. CHOP SC PF=3.32, positivo.
+> - Hallazgo clave: SC CHOP T2 = 0 winners, 3 losers (señal para H2c).
+> - Script: `backtest/h2a_chop_sc.py`
+>
+> **H2c — Filtro CHOP∩T2 SC** ⚠️ PROMETEDORA NO VALIDADA
+> - Eliminar SC CHOP∩T2 (n=3): WR+4pp ✅ PF+0.86 ✅ Net+$335 ✅ MaxDD sin cambio ✅.
+> - Cross-period: OOS1 ✅ OOS2 ✅ IS/OOS3 neutro (0 trades afectados).
+> - Convergencia triple: H1 (T2=41% losers) + H2b (T2 inferior) + H2a anatomy (CHOP T2=0 winners).
+> - **PROBLEMA: n=3, todos perdedores. Insuficiente para implementar.**
+> - Próximo paso: extender histórico NT8 pre-jul 2025 para buscar más instancias CHOP T2.
+> - Script: `backtest/h2c_chop_t2_sc.py`
+>
+> **Mapa SC por bucket × tercio (referencia):**
+> - CHOP T2: WR=0% n=3 Net=-$335 ← target H2c
+> - WEAK T2: WR=67% n=3 Net=+$695 (OK)
+> - ACTV T2: WR=100% n=1 Net=+$601 (OK)
+> - STRG T2: WR=25% n=4 Net=+$54 (débil, posible H2d — necesita más datos)
+> - STRG T1: WR=100% n=10 Net=+$4,167 (núcleo del edge en STRONG)
+>
+> **Regla de validación H2c antes de implementar:**
+> - Extender backtesting a ≥2024 en NT8 para n≥10 instancias CHOP T2.
+> - Si patrón persiste (CHOP T2 WR<30%) → implementar en NinjaScript como gate de entrada.
+> - Si patrón desaparece → era ruido. Descartar.
 >
 > NO implementar hasta: propuesta → backtest counterfactual → validación IS+OOS.
 
