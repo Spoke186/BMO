@@ -2,6 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
 using NinjaTrader.NinjaScript;
@@ -217,6 +220,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[Range(100, 600)]
 		[Display(Name = "Umbral ATR20D CHOP (default 300)", Order = 41, GroupName = "2. Estrategia")]
 		public double ATRRegimeThreshold { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Modo test: enviar secuencia Telegram al activar (NO afecta trading)", Order = 42, GroupName = "9. Debug")]
+		public bool EnableTestMode { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Activar Dashboard Web (localhost:8000)", Order = 50, GroupName = "9. Debug")]
+		public bool EnableDashboard { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Dashboard URL", Order = 51, GroupName = "9. Debug")]
+		public string DashboardUrl { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -256,6 +271,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private int    sweepBar15m;       // CurrentBars[1] cuando se detecto la barrida
 		private bool   levelBrokenLow15m; // true si ya perforamos preMarketLow (sweep multi-barra)
 		private bool   levelBrokenHigh15m;// true si ya perforamos preMarketHigh (sweep multi-barra)
+		private string _lastSweepSource = ""; // "PreMktL" | "PDL" | "PreMktH" | "PDH"
 
 		// Setup armado (FVG 15m identificado, esperando retroceso + confirmacion 1m)
 		// 0 = sin setup, 1 = setup activo
@@ -360,6 +376,20 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double sweepFvgL;
 		private double sweepFvgU;
 		private System.IO.StreamWriter _logWriter;
+		private string _accountName; // guardado en Realtime para uso en Terminated
+
+		// Seguimiento de sesión para reporte diario Telegram (solo Realtime; cero efecto en backtest)
+		private int    _sessionTrades;
+		private int    _sessionWins;
+		private int    _sessionLosses;
+		private double _sessionWinPnl;
+		private double _sessionLossPnl;
+		private double _sessionPnlRunning;
+		private double _sessionDrawdown;
+		private bool   _sessionStartMsgSent; // evita enviar sesión start más de una vez por día
+		private bool   _isLive;              // true solo en State.Realtime; bloquea Telegram en historico
+		private DashboardLogger _dashboard;  // null si EnableDashboard=false o dashboard caido
+		private int    _hbTick;              // contador barras para heartbeat al dashboard
 		#endregion
 
 		protected override void OnStateChange()
@@ -420,6 +450,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 				MaxDailyLoss         = 400;   // spec: 1 stop loss ($375) + slippage = stop el dia
 				EnableATRRegimeFilter = false; // off por default — activar tras validación backtest
 				ATRRegimeThreshold    = 300;   // ATR20D < 300 = CHOP (validado FASE 4)
+				EnableTestMode        = false;
+			EnableDashboard       = true;
+			DashboardUrl          = "http://localhost:8000";
 			}
 			else if (State == State.Configure)
 			{
@@ -446,16 +479,45 @@ namespace NinjaTrader.NinjaScript.Strategies
 					_logWriter = new System.IO.StreamWriter(logPath, false) { AutoFlush = true };
 					_logWriter.WriteLine($"=== ApexNqIctStrategy v3-LATCH | {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
 				}
+				// Inicializar Telegram y Dashboard en DataLoaded para cubrir cuentas con datos
+				// delayed donde State.Realtime nunca dispara (ej. demo EOD trial).
+				if (!IsInStrategyAnalyzer)
+				{
+					alerts       = new TelegramAlerts();
+					_accountName = Account?.Name ?? "N/A";
+					alerts.SendActivation(_accountName, Instrument.FullName, "1m/15m", "v3-LATCH");
+					if (EnableDashboard)
+					{
+						_dashboard = new DashboardLogger(DashboardUrl);
+						_dashboard.LogBotStart(_accountName, Instrument.FullName, "v3-LATCH");
+						_dashboard.LogHeartbeat(_accountName, Instrument.FullName);
+					}
+				}
 			}
 			else if (State == State.Realtime)
 			{
+				// Marcar live y enviar activacion SIN CONDICIONES
+				_isLive = true;
+				if (alerts == null)
+				{
+					alerts       = new TelegramAlerts();
+					_accountName = Account?.Name ?? "N/A";
+				}
+				if (_dashboard == null && EnableDashboard)
+					_dashboard = new DashboardLogger(DashboardUrl);
+				alerts.SendActivation(_accountName ?? Account?.Name ?? "N/A", Instrument.FullName, "1m/15m", "v3-LATCH");
+				_dashboard?.LogBotStart(_accountName ?? "N/A", Instrument.FullName, "v3-LATCH");
+
 				// Activar tracker de consistencia solo en tiempo real. En backtest
 				// DateTime.Now no corresponde a la barra y persistir JSON seria incorrecto.
 				pnlTracker     = new DailyPnlTracker();
 				lastTradeCount = SystemPerformance.AllTrades.Count;
 
-				alerts = new TelegramAlerts();
-				alerts.SendAsync(TelegramAlerts.Msg.BotStart, Instrument.FullName);
+				if (EnableTestMode)
+				{
+					alerts.SendTestSequence(Instrument.FullName);
+					CaptureAndSendChart("[TEST] Screenshot del grafico funcionando");
+				}
 
 				notion = new NotionLogger();
 			}
@@ -464,7 +526,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 				_logWriter?.Flush();
 				_logWriter?.Dispose();
 				_logWriter = null;
-				alerts?.SendAsync(TelegramAlerts.Msg.BotStop);
+				alerts?.SendDeactivation(_accountName ?? "N/A", Instrument?.FullName ?? "N/A", "Estrategia detenida");
+				_dashboard?.LogBotStop(_accountName ?? "N/A", Instrument?.FullName ?? "N/A", "Estrategia detenida");
 				pnlTracker?.Save();
 			}
 		}
@@ -473,6 +536,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 		{
 			if (CurrentBars[0] < BarsRequiredToTrade || CurrentBars[1] < BarsRequiredToTrade)
 				return;
+
+			// Heartbeat al dashboard cada 60 barras 1m (~1 min) — solo en vivo
+			if (_isLive && BarsInProgress == 0 && _dashboard != null)
+			{
+				if (++_hbTick >= 3) { _hbTick = 0; _dashboard.LogHeartbeat(_accountName ?? "N/A", Instrument.FullName); }
+			}
 
 			// Capturar cierre diario CONFIRMADO cuando la barra diaria cierra (BarsInProgress==2).
 			// prevDayClose1/2 permiten detectar cambio de tendencia en 1 dia (no en 2-3 semanas como EMA20).
@@ -614,6 +683,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 			bool inKillZone = ToTime(Time[0]) >= KillZoneStart * 100
 			               && ToTime(Time[0]) <  KillZoneEnd   * 100;
 
+			// Mensaje inicio de sesión operativa: una vez por día al entrar en kill zone
+			if (inKillZone && !_sessionStartMsgSent)
+			{
+				_sessionStartMsgSent = true;
+				alerts?.SendSessionStart(Instrument.FullName, _accountName ?? "N/A");
+			}
+
 			if (setupState == 1)
 			{
 				ManageSetup1m(inKillZone);
@@ -724,7 +800,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (EnableATRRegimeFilter && _atr20dSession > 0 && _atr20dSession < ATRRegimeThreshold)
 			{
 				if (!_loggedATRRegime)
-				{ Print($"[ATR-REGIME] ATR20D={_atr20dSession:F0} < {ATRRegimeThreshold:F0} → CHOP, no operar hoy"); _loggedATRRegime = true; }
+				{
+					Print($"[ATR-REGIME] ATR20D={_atr20dSession:F0} < {ATRRegimeThreshold:F0} → CHOP, no operar hoy");
+					alerts?.SendSetupSkipped("Día CHOP", $"ATR20D={_atr20dSession:F0} pts < umbral {ATRRegimeThreshold:F0} pts → régimen CHOP, sin operaciones hoy");
+					_loggedATRRegime = true;
+				}
 				return;
 			}
 			// DIAGNOSTICO: imprimir estado de todos los gates en cada barra 15m
@@ -786,6 +866,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 						levelBrokenHigh15m = false; // cancelar lado contrario
 						if (trend == 0) trend = 1;  // fijar dirección provisional
 						L($"[SWEEP-A] Barrida LOW confirmada @ {Times[1][0]:HH:mm}. Dir→LONG. Buscando CHoCH...");
+						alerts?.SendSetupDetected("Setup A — Barrida 15m", "LONG",
+						    $"Nivel barrido: {sweepLevel15m:F2} @ {Times[1][0]:HH:mm} | Buscando CHoCH + FVG en 15m");
 					}
 				}
 				if (tryShort && sweepState15m == 0) // solo si no se disparó ya el long
@@ -805,6 +887,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 						levelBrokenLow15m  = false; // cancelar lado contrario
 						if (trend == 0) trend = -1; // fijar dirección provisional
 						L($"[SWEEP-A] Barrida HIGH confirmada @ {Times[1][0]:HH:mm}. Dir→SHORT. Buscando CHoCH...");
+						alerts?.SendSetupDetected("Setup A — Barrida 15m", "SHORT",
+						    $"Nivel barrido: {sweepLevel15m:F2} @ {Times[1][0]:HH:mm} | Buscando CHoCH + FVG en 15m");
 					}
 				}
 			}
@@ -883,14 +967,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 					if (isChoch && sweepDispSeen && sweepFvgSeen)
 					{
 						if (dailyBiasDir == -1)
-						{ Print("[BIAS] Sesgo overnight BEAR -> LONG bloqueado"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ Print("[BIAS] Sesgo overnight BEAR -> LONG bloqueado"); alerts?.SendSetupSkipped("Setup A LONG", "Sesgo overnight BEAR → operación LONG bloqueada"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						if (EnableDailyTrendFilter && prevDayClose1 > 0 && prevDayClose2 > 0 && prevDayClose1 > prevDayClose2)
-						{ Print("[TREND-D] Ayer alcista → LONG Setup A bloqueado (ICT AMD)"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ Print("[TREND-D] Ayer alcista → LONG Setup A bloqueado (ICT AMD)"); alerts?.SendSetupSkipped("Setup A LONG", $"Ayer alcista ({prevDayClose1:F0}>{prevDayClose2:F0}) → bloqueado filtro tendencia diaria ICT AMD"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						int score = CalcTradeScore(1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
-						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); alerts?.SendSetupSkipped("Setup A LONG", $"Score {score}/100 < mínimo {MinTradeScore} → entrada cancelada"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						if (MaxStructuralRiskUsd > 0)
 						{
@@ -967,13 +1051,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 					if (isChoch && sweepDispSeen && sweepFvgSeen)
 					{
 						if (dailyBiasDir == 1)
-						{ Print("[BIAS] Sesgo overnight BULL -> SHORT bloqueado"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ Print("[BIAS] Sesgo overnight BULL -> SHORT bloqueado"); alerts?.SendSetupSkipped("Setup A SHORT", "Sesgo overnight BULL → operación SHORT bloqueada"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						// Shorts no bloqueados por EnableDailyTrendFilter: WR positivo en días alcistas Y bajistas.
 
 						int score = CalcTradeScore(-1, true, sweepDispSeen, fvgSize, true);
 						if (score < MinTradeScore)
-						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
+						{ L($"[SCORE] {score}/100 < {MinTradeScore} -> skip"); alerts?.SendSetupSkipped("Setup A SHORT", $"Score {score}/100 < mínimo {MinTradeScore} → entrada cancelada"); sweepState15m = 0; sweepDispSeen = false; sweepFvgSeen = false; return; }
 
 						if (MaxStructuralRiskUsd > 0)
 						{
@@ -1005,6 +1089,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 			swingLows1m.Clear();
 
 			Print($"[SETUP] Dir={dir} FVG [{fvgLower:F2},{fvgUpper:F2}] Invalid={fvgInvalidPrice:F2} Score={lastTradeScore}");
+			alerts?.SendSetupDetected(
+			    "Setup A — FVG Armado",
+			    dir == 1 ? "LONG" : "SHORT",
+			    $"FVG=[{fvgLower:F2},{fvgUpper:F2}] | Score={lastTradeScore} | Esperando retroceso en 1m");
 		}
 		#endregion
 
@@ -1032,7 +1120,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
 			{
-				Print($"[CONSISTENCIA] Setup saltado."); setupState = 0; return;
+				Print($"[CONSISTENCIA] Setup saltado.");
+				alerts?.SendSetupSkipped("Setup A", "Regla consistencia 50% Apex → TP violaría el límite de día consistente");
+				setupState = 0; return;
 			}
 
 			// Paso 5a: zona de entrada = FVG + buffer de 1× el tamaño del FVG encima/debajo
@@ -1122,7 +1212,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (!_loggedDailyBias)
 			{
 				string lbl = dailyBiasDir == 1 ? "BULL (solo longs)" : dailyBiasDir == -1 ? "BEAR (solo shorts)" : "NEUTRAL";
-				Print($"[BIAS-B] Overnight bias → {lbl}");
+				L($"[BIAS-B] Overnight bias → {lbl}");
 				_loggedDailyBias = true;
 			}
 			if (dailyBiasDir ==  1) shortOk = false;
@@ -1134,7 +1224,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				double preMktRange = preMarketHigh - preMarketLow;
 				if (preMktRange < MinPreMarketRange)
 				{
-					Print($"[CHOP-FILTER] Rango pre-mkt {preMktRange:F1} pts < {MinPreMarketRange:F1} pts → dia choppy, skip");
+					L($"[CHOP-FILTER] Rango pre-mkt {preMktRange:F1} pts < {MinPreMarketRange:F1} pts → dia choppy, skip");
 					return;
 				}
 			}
@@ -1157,7 +1247,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				if (prevDayClose1 > prevDayClose2) longOk = false;
 				string trendLbl = prevDayClose1 > prevDayClose2 ? "ALCISTA" : "BAJISTA";
 				if (!_loggedDailyBias)
-					Print($"[TREND-D] Ayer {trendLbl} ({prevDayClose1:F0} vs {prevDayClose2:F0}) → longOk={longOk}");
+					L($"[TREND-D] Ayer {trendLbl} ({prevDayClose1:F0} vs {prevDayClose2:F0}) → longOk={longOk}");
 			}
 
 			// Filtro legacy premarket vs RTH close (desactivado por defecto).
@@ -1220,12 +1310,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private void EnterSweepB(int dir, string source = "")
 		{
+			// Notificar detección antes de cualquier gate (incluye caso bloqueado por consistencia)
+			string _bDir  = dir == 1 ? "LONG" : "SHORT";
+			string _bLvl  = (source == "PDL" || source == "PDH")
+			    ? $"{source}={(dir==1?prevDayLow:prevDayHigh):F2}"
+			    : $"PreMkt=[{preMarketLow:F2},{preMarketHigh:F2}]";
+			alerts?.SendSetupDetected("Setup B", _bDir,
+			    $"Sweep {source} | {_bLvl} | Cierre={Close[0]:F2} @ {Time[0]:HH:mm}");
+
 			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
 			{
-				Print("[CONSISTENCIA] SweepB saltado: violaria regla 50% Apex.");
+				L("[CONSISTENCIA] SweepB saltado: violaria regla 50% Apex.");
+				alerts?.SendSetupSkipped("Setup B", "Regla consistencia 50% Apex → TP violaría el límite de día consistente");
 				return;
 			}
 
+			_lastSweepSource = source;
 			string sig = dir == 1 ? "LongSweep" : "ShortSweep";
 			SetStopLoss(sig, CalculationMode.Currency, StopLossUsd, false);
 			SetProfitTarget(sig, CalculationMode.Currency, ProfitTargetUsd);
@@ -1236,7 +1336,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			string lvlInfo = (source == "PDL" || source == "PDH")
 				? $"PDH={prevDayHigh:F2} PDL={prevDayLow:F2}"
 				: $"PreMkt=[{preMarketLow:F2},{preMarketHigh:F2}]";
-			Print($"[SETUP-B] {sig} [{source}] {lvlInfo}");
+			L($"[SETUP-B] {sig} [{source}] {lvlInfo}");
 		}
 		#endregion
 
@@ -1516,6 +1616,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (pnlTracker != null && pnlTracker.WouldViolateConsistency(ProfitTargetUsd))
 			{
 				Print("[CONSISTENCIA] SetupC saltado: violaria regla 50% Apex.");
+				alerts?.SendSetupSkipped("Setup C", "Regla consistencia 50% Apex → TP violaría el límite de día consistente");
 				return;
 			}
 			string sig = dir == 1 ? "LongOB" : "ShortOB";
@@ -1526,7 +1627,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 			activeSignal = sig;
 			tradedToday  = true;
 			Print($"[SETUP-C] {sig} OB=[{obLow:F2},{obHigh:F2}]");
-			alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened, $"{sig} OB=[{obLow:F2},{obHigh:F2}]");
+			{
+				double _ptvC  = Instrument.MasterInstrument.PointValue;
+				double _sptsC = StopLossUsd     / (_ptvC * Contratos);
+				double _tptsC = ProfitTargetUsd / (_ptvC * Contratos);
+				double _spxC  = dir == 1 ? Close[0] - _sptsC : Close[0] + _sptsC;
+				double _tpxC  = dir == 1 ? Close[0] + _tptsC : Close[0] - _tptsC;
+				alerts?.SendTradeOpen(dir == 1 ? "LONG" : "SHORT",
+				    Instrument.FullName, Close[0], _spxC, _tpxC, StopLossUsd,
+				    sig, $"OB=[{obLow:F2},{obHigh:F2}]");
+			}
 		}
 		#endregion
 
@@ -1545,6 +1655,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 			}
 			sessionHigh = double.MinValue;
 			sessionLow  = double.MaxValue;
+
+			// Reporte diario Telegram al iniciar nueva sesión (resume la sesión que acaba de cerrar)
+			if (_sessionTrades > 0)
+				alerts?.SendDailyReport(_sessionTrades, _sessionWins, _sessionLosses,
+				    _sessionWinPnl + _sessionLossPnl, _sessionDrawdown,
+				    _sessionWinPnl, _sessionLossPnl);
+			_sessionTrades = 0; _sessionWins = 0; _sessionLosses = 0;
+			_sessionWinPnl = 0; _sessionLossPnl = 0; _sessionPnlRunning = 0; _sessionDrawdown = 0;
 
 			tradedToday         = false;
 			tradingDisabled     = false;
@@ -1567,6 +1685,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			preMarketReady      = false;
 			preMarketAttempted  = false;
 			activeSignal        = "";
+			_sessionStartMsgSent = false;
 			// Resetear swings y sesgo diariamente para que CHoCH compare contra
 			// swings del dia actual, no contra ATHs acumulados de meses anteriores.
 			swingHighs15m.Clear();
@@ -1648,9 +1767,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				Print($"[RIESGO] Cerca del trailing DD: {distToDD:C} margen disponible < SL {StopLossUsd:C}. Sin nuevas entradas.");
 		}
 
-		// Registra trades cerrados en el tracker de consistencia.
-		// Solo activo en vivo (pnlTracker null en backtest). Usa SystemPerformance
-		// para evitar problemas de timing con OnExecutionUpdate.
+		// Registra trades cerrados. Solo activo en vivo (pnlTracker null en backtest).
 		private void RecordClosedTrades()
 		{
 			int total = SystemPerformance.AllTrades.Count;
@@ -1671,7 +1788,33 @@ namespace NinjaTrader.NinjaScript.Strategies
 				if (pnlTracker == null) continue;
 
 				pnlTracker.RecordTrade(tradePnl);
-				alerts?.SendAsync(TelegramAlerts.Msg.TradeClosed, $"PnL {tradePnl:C}");
+
+				// Tracking sesión para reporte diario
+				_sessionTrades++;
+				if (tradePnl > 0) { _sessionWins++; _sessionWinPnl += tradePnl; }
+				else              { _sessionLosses++; _sessionLossPnl += tradePnl; }
+				_sessionPnlRunning += tradePnl;
+				if (_sessionPnlRunning < _sessionDrawdown) _sessionDrawdown = _sessionPnlRunning;
+
+				// Inferir motivo de cierre por PnL vs targets fijos
+				string _closeReason;
+				if      (tradePnl >=  ProfitTargetUsd * 0.90) _closeReason = "Take Profit";
+				else if (tradePnl <= -StopLossUsd     * 0.90) _closeReason = "Stop Loss";
+				else if (Math.Abs(tradePnl) < StopLossUsd * 0.05) _closeReason = "Break Even";
+				else if (tradePnl > 0)                         _closeReason = "SESSION_CLOSE (ganador)";
+				else                                           _closeReason = "SESSION_CLOSE (perdedor)";
+
+				int    _tDir  = t.Entry.MarketPosition == MarketPosition.Long ? 1 : -1;
+				string _tDirS = _tDir == 1 ? "LONG" : "SHORT";
+				double _tPts  = (t.Exit.Price - t.Entry.Price) * _tDir;
+				int    _durMin = (int)(t.Exit.Time - t.Entry.Time).TotalMinutes;
+				alerts?.SendTradeClose(_tDirS, t.Entry.Price, t.Exit.Price,
+				    _tPts, tradePnl, t.Exit.Time - t.Entry.Time, _closeReason);
+				_dashboard?.LogTradeClose(_tDirS, t.Entry.Price, t.Exit.Price,
+				    tradePnl, _tPts, _closeReason, _durMin);
+				CaptureAndSendChart(string.Format("{0} {1} | {2}{3:C}",
+				    tradePnl >= 0 ? "OK" : "X", _closeReason,
+				    tradePnl >= 0 ? "+" : "", tradePnl));
 
 				// Publicar trade al AddOn (B6) — accesible via GET /trades/today
 				lock (ApexBridgeState.TodayTradesLock)
@@ -1796,6 +1939,64 @@ namespace NinjaTrader.NinjaScript.Strategies
 		}
 		#endregion
 
+		#region Screenshot del gráfico
+		// PrintWindow con PW_RENDERFULLCONTENT captura contenido DirectX (NT8 usa hardware rendering).
+		// RenderTargetBitmap (WPF software) solo captura píxeles de UI sin aceleración → imagen en blanco.
+		[DllImport("user32.dll")]
+		private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags);
+
+		private void CaptureAndSendChart(string caption)
+		{
+			if (alerts == null || ChartControl == null) return;
+			ChartControl.Dispatcher.InvokeAsync(() =>
+			{
+				try
+				{
+					var window = System.Windows.Window.GetWindow(ChartControl);
+					if (window == null) return;
+					var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+					if (hwnd == IntPtr.Zero) return;
+
+					// Escala DPI (importante en pantallas HiDPI / Windows 11 con escala >100%)
+					var psrc = System.Windows.PresentationSource.FromVisual(ChartControl);
+					double sx = psrc?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+					double sy = psrc?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+
+					int ww = (int)(window.ActualWidth  * sx);
+					int wh = (int)(window.ActualHeight * sy);
+					if (ww <= 0 || wh <= 0) return;
+
+					// Posición y tamaño del panel del gráfico en píxeles de dispositivo
+					var chartPt = ChartControl.TransformToAncestor(window)
+					                           .Transform(new System.Windows.Point(0, 0));
+					int cx = Math.Max(0, (int)(chartPt.X * sx));
+					int cy = Math.Max(0, (int)(chartPt.Y * sy));
+					int cw = Math.Min((int)(ChartControl.ActualWidth  * sx), ww - cx);
+					int ch = Math.Min((int)(ChartControl.ActualHeight * sy), wh - cy);
+					if (cw <= 0 || ch <= 0) return;
+
+					using (var full = new Bitmap(ww, wh, PixelFormat.Format32bppArgb))
+					using (var g    = Graphics.FromImage(full))
+					{
+						IntPtr hdc = g.GetHdc();
+						PrintWindow(hwnd, hdc, 2); // 2 = PW_RENDERFULLCONTENT
+						g.ReleaseHdc(hdc);
+
+						using (var crop = full.Clone(
+						    new System.Drawing.Rectangle(cx, cy, cw, ch),
+						    PixelFormat.Format32bppArgb))
+						using (var ms = new System.IO.MemoryStream())
+						{
+							crop.Save(ms, ImageFormat.Png);
+							alerts.SendPhotoAsync(ms.ToArray(), caption);
+						}
+					}
+				}
+				catch (Exception ex) { Print("[SCREENSHOT] " + ex.Message); }
+			});
+		}
+		#endregion
+
 		#region Ordenes / utilidades
 		private void AddCapped(List<double> list, double v)
 		{
@@ -1856,8 +2057,27 @@ namespace NinjaTrader.NinjaScript.Strategies
 				                  execution.Order.Name == "LongFvgD" ||
 				                  execution.Order.Name == "LongOR") ? 1 : -1;
 
-				alerts?.SendAsync(TelegramAlerts.Msg.TradeOpened,
-					$"{(lastEntryDir == 1 ? "LONG" : "SHORT")} {quantity} @ {price:F2}");
+				{
+					double _ptv  = Instrument.MasterInstrument.PointValue;
+					double _spts = StopLossUsd     / (_ptv * Contratos);
+					double _tpts = ProfitTargetUsd / (_ptv * Contratos);
+					double _spx  = lastEntryDir == 1 ? price - _spts : price + _spts;
+					double _tpx  = lastEntryDir == 1 ? price + _tpts : price - _tpts;
+					string _oct  = string.Format("ATR20D={0:F0} trend={1} score={2} PM=[{3:F0},{4:F0}] PDH={5:F0} PDL={6:F0} src={7}",
+					    _atr20dSession, trend, lastTradeScore,
+					    preMarketLow  < double.MaxValue ? preMarketLow  : 0,
+					    preMarketHigh > double.MinValue ? preMarketHigh : 0,
+					    prevDayHigh, prevDayLow, _lastSweepSource);
+					if (_isLive)
+					{
+						string _dir = lastEntryDir == 1 ? "LONG" : "SHORT";
+						alerts?.SendTradeOpen(_dir, Instrument.FullName, price, _spx, _tpx,
+						    StopLossUsd, execution.Order.Name, _oct);
+						_dashboard?.LogTradeOpen(_dir, execution.Order.Name, price, _spx, _tpx,
+						    _accountName ?? "N/A", Instrument.FullName, _lastSweepSource);
+						CaptureAndSendChart(string.Format("APERTURA {0} {1} @ {2:F2}", _dir, execution.Order.Name, price));
+					}
+				}
 
 				if (notion != null)
 				{
