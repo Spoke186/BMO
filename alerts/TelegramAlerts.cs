@@ -1,39 +1,13 @@
-// alerts/TelegramAlerts.cs — Stream C, tarea C3
+// alerts/TelegramAlerts.cs
 //
-// Alertas Telegram para el bot NQ/MNQ. REQUIERE N8 (token + chat id del operador).
-//
-// CONFIGURACIÓN (antes de usar):
-//   Variables de entorno (igual que el resto del proyecto — ver .env.example):
-//     TELEGRAM_BOT_TOKEN=<token del bot @BotFather>
-//     TELEGRAM_CHAT_ID=<chat id numérico del operador>
-//   Setear en Windows: setx TELEGRAM_BOT_TOKEN "123456:ABC..."
-//   NT8 debe reiniciarse después de setx para leer los nuevos valores.
-//
-// INTEGRACIÓN (Stream A — ApexNqIctStrategy.cs):
-//   Instanciar una vez en State.Configure:
-//       _alerts = new TelegramAlerts();
-//       _alerts.SendAsync(TelegramAlerts.Msg.BotStart);
-//
-//   Disparar en los eventos correspondientes:
-//       OnExecutionUpdate → TradeOpened / TradeClosed
-//       CustomStop logic  → DailyLossWarning
-//       OnStateChange(Terminated) → BotStop
-//       Heartbeat timer   → Heartbeat (cada 5 min, ver ejemplo abajo)
-//
-// HEARTBEAT (ejemplo de timer en NT8):
-//   En State.Configure:
-//       _heartbeatTimer = new System.Timers.Timer(5 * 60 * 1000);
-//       _heartbeatTimer.Elapsed += (s, e) => _alerts.SendAsync(TelegramAlerts.Msg.Heartbeat);
-//       _heartbeatTimer.AutoReset = true;
-//       _heartbeatTimer.Start();
-//   En State.Terminated:
-//       _heartbeatTimer?.Stop(); _heartbeatTimer?.Dispose();
-//
-// NOTA DE SEGURIDAD: el token nunca va en el código. Solo variables de entorno.
+// Alertas Telegram — monitoreo Demo 4 semanas.
+// REQUIERE variables de entorno (solo en Realtime; null en backtest → no-op automático):
+//   setx TELEGRAM_BOT_TOKEN "123456:ABC..."
+//   setx TELEGRAM_CHAT_ID   "123456789"
+// Reiniciar NT8 tras setx.
 
 using System;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace NinjaTrader.NinjaScript.Strategies
@@ -44,7 +18,6 @@ namespace NinjaTrader.NinjaScript.Strategies
         private readonly string _chatId;
         private readonly bool   _enabled;
 
-        // Emoji prefixes para identificar tipo de alerta de un vistazo
         public enum Msg
         {
             BotStart,
@@ -55,62 +28,249 @@ namespace NinjaTrader.NinjaScript.Strategies
             ConsistencyWarning,
             StrategyError,
             Heartbeat,
+            SetupSkipped,
+            DailyReport,
         }
 
         public TelegramAlerts()
         {
-            _token  = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
-            _chatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID")   ?? "";
+            _token   = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
+            _chatId  = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID")   ?? "";
             _enabled = !string.IsNullOrEmpty(_token) && !string.IsNullOrEmpty(_chatId);
         }
 
-        /// <summary>
-        /// Envía mensaje predefinido. No bloquea — fire-and-forget via Task.
-        /// context: info libre (precio, PnL, etc.) que se añade al mensaje base.
-        /// </summary>
+        // ── API heredada (compatibilidad) ────────────────────────────────────
+
         public void SendAsync(Msg type, string context = "")
         {
             if (!_enabled) return;
-            string text = BuildMessage(type, context);
-            Task.Run(() => Post(text));
+            Task.Run(() => Post(BuildLegacyMessage(type, context)));
         }
 
-        /// <summary>Envía texto libre. Usar solo para errores no tipados.</summary>
         public void SendRawAsync(string text)
         {
             if (!_enabled) return;
             Task.Run(() => Post($"[BMO] {text}"));
         }
 
-        // ── Construcción de mensajes ─────────────────────────────────────────
+        // ── API rica para monitoreo Demo ─────────────────────────────────────
 
-        private static string BuildMessage(Msg type, string ctx)
+        /// <summary>Apertura de operación con detalles completos.</summary>
+        public void SendTradeOpen(string dir, string instrument, double entryPrice,
+            double stopPrice, double tpPrice, double riskUsd,
+            string setupType, string ctx = "")
+        {
+            if (!_enabled) return;
+            string ts      = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string emoji   = dir == "LONG" ? "📈" : "📉";
+            double tpPts   = Math.Abs(tpPrice   - entryPrice);
+            double slPts   = Math.Abs(stopPrice - entryPrice);
+            string msg =
+                $"{emoji} APERTURA\n" +
+                $"Fecha/Hora:  {ts}\n" +
+                $"Instrumento: {instrument}\n" +
+                $"Dirección:   {dir}\n" +
+                $"Setup:       {setupType}\n" +
+                $"Entrada:     {entryPrice:F2}\n" +
+                $"Stop Loss:   {stopPrice:F2}  (-{slPts:F1} pts  |  -${riskUsd:F0})\n" +
+                $"Take Profit: {tpPrice:F2}  (+{tpPts:F1} pts)\n" +
+                (string.IsNullOrEmpty(ctx) ? "" : $"Variables:   {ctx}");
+            Task.Run(() => Post(msg));
+        }
+
+        /// <summary>Cierre de operación con resultado y motivo.</summary>
+        public void SendTradeClose(string dir, double entryPrice, double exitPrice,
+            double pnlPts, double pnlUsd, TimeSpan duration, string closeReason)
+        {
+            if (!_enabled) return;
+            string ts    = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string emoji = pnlUsd >= 0 ? "✅" : "❌";
+            string sign  = pnlUsd >= 0 ? "+" : "";
+            int    mins  = (int)duration.TotalMinutes;
+            string msg =
+                $"{emoji} CIERRE\n" +
+                $"Fecha/Hora:  {ts}\n" +
+                $"Dirección:   {dir}\n" +
+                $"Entrada:     {entryPrice:F2}\n" +
+                $"Salida:      {exitPrice:F2}\n" +
+                $"Resultado:   {sign}{pnlPts:F2} pts  |  {sign}${pnlUsd:F2}\n" +
+                $"Duración:    {mins}m {duration.Seconds:D2}s\n" +
+                $"Motivo:      {closeReason}";
+            Task.Run(() => Post(msg));
+        }
+
+        /// <summary>Setup detectado pero no ejecutado.</summary>
+        public void SendSetupSkipped(string setupType, string reason)
+        {
+            if (!_enabled) return;
+            string ts  = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string msg = $"⚠️ SETUP DESCARTADO\nFecha/Hora: {ts}\nSetup: {setupType}\nMotivo: {reason}";
+            Task.Run(() => Post(msg));
+        }
+
+        /// <summary>Reporte diario al final de la sesión RTH.</summary>
+        public void SendDailyReport(int trades, int wins, int losses,
+            double pnlDay, double ddDay, double winPnl, double lossPnl)
+        {
+            if (!_enabled) return;
+            string ts    = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            double wr    = trades > 0 ? 100.0 * wins / trades : 0.0;
+            string pfStr;
+            if      (lossPnl >= 0 && winPnl > 0) pfStr = "∞";
+            else if (lossPnl < 0)                pfStr = (winPnl / Math.Abs(lossPnl)).ToString("F2");
+            else                                 pfStr = "0.00";
+            string emoji = pnlDay >= 0 ? "🟢" : "🔴";
+            string sign  = pnlDay >= 0 ? "+" : "";
+            string msg =
+                $"{emoji} REPORTE DIARIO\n" +
+                $"Fecha/Hora:   {ts}\n" +
+                $"Operaciones:  {trades}  (✅ {wins}  ❌ {losses})\n" +
+                $"Win Rate:     {wr:F1}%\n" +
+                $"Profit Factor:{pfStr}\n" +
+                $"PnL día:      {sign}${pnlDay:F2}\n" +
+                $"Drawdown:     ${ddDay:F2}";
+            Task.Run(() => Post(msg));
+        }
+
+        // ── API observabilidad tiempo real ──────────────────────────────────
+
+        public void SendActivation(string account, string instrument, string timeframe, string version)
+        {
+            if (!_enabled) return;
+            string ts = DateTime.Now.ToString("HH:mm:ss");
+            string msg =
+                $"[BMO]\n" +
+                $"ESTRATEGIA ACTIVADA\n" +
+                $"Hora:        {ts}\n" +
+                $"Cuenta:      {account}\n" +
+                $"Instrumento: {instrument}\n" +
+                $"Estado:      Monitoreando mercado";
+            Task.Run(() => Post(msg));
+        }
+
+        public void SendDeactivation(string account, string instrument, string reason)
+        {
+            if (!_enabled) return;
+            string ts = DateTime.Now.ToString("HH:mm:ss");
+            string msg =
+                $"[BMO]\n" +
+                $"ESTRATEGIA DETENIDA\n" +
+                $"Hora:        {ts}\n" +
+                $"Cuenta:      {account}\n" +
+                $"Instrumento: {instrument}\n" +
+                $"Motivo:      {reason}";
+            Task.Run(() => Post(msg));
+        }
+
+        public void SendSessionStart(string instrument, string account)
+        {
+            if (!_enabled) return;
+            string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string msg =
+                $"📈 BMO SESIÓN INICIADA\n" +
+                $"Fecha/Hora:   {ts}\n" +
+                $"Mercado:      {instrument}\n" +
+                $"Cuenta:       {account}\n" +
+                $"Estado:       BUSCANDO SETUPS";
+            Task.Run(() => Post(msg));
+        }
+
+        public void SendSetupDetected(string setupType, string dir, string details)
+        {
+            if (!_enabled) return;
+            string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string msg =
+                $"👀 SETUP DETECTADO\n" +
+                $"Fecha/Hora:   {ts}\n" +
+                $"Setup:        {setupType}\n" +
+                $"Dirección:    {dir}\n" +
+                $"Detalle:      {details}\n" +
+                $"Estado:       Validando condiciones finales.";
+            Task.Run(() => Post(msg));
+        }
+
+        public void SendDiagnostics(string account, string instrument, string status)
+        {
+            if (!_enabled) return;
+            string ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            bool ok = status == "OK";
+            string result = ok ? "✅ LISTO PARA OPERAR" : $"⚠️ {status}";
+            string msg =
+                $"🔍 DIAGNÓSTICO DEL SISTEMA\n" +
+                $"Fecha/Hora:   {ts}\n" +
+                $"Cuenta:       {account}\n" +
+                $"Instrumento:  {instrument}\n" +
+                $"Telegram:     ✅ Conectado\n" +
+                $"Estrategia:   ✅ Activa\n" +
+                $"Resultado:    {result}";
+            Task.Run(() => Post(msg));
+        }
+
+        public void SendTestSequence(string instrument)
+        {
+            if (!_enabled) return;
+            Task.Run(() =>
+            {
+                Post("🧪 [TEST] Iniciando secuencia de prueba Telegram...");
+                System.Threading.Thread.Sleep(600);
+                Post($"👀 [TEST] Setup detectado (simulado)\nInstrumento: {instrument}\nDirección: LONG\nDetalle: Sweep PreMktL simulado | Validando condiciones finales.");
+                System.Threading.Thread.Sleep(600);
+                Post($"🚀 [TEST] Operación simulada ABIERTA\nInstrumento: {instrument}\nDirección: LONG\nSetup: SetupB (TEST)\nEntrada: 21000.00\nStop Loss: 20992.50  (-7.5 pts  |  -$375)\nTake Profit: 21021.00  (+21.0 pts)");
+                System.Threading.Thread.Sleep(600);
+                Post($"✅ [TEST] Operación simulada CERRADA\nDirección: LONG\nEntrada: 21000.00\nSalida: 21021.00\nResultado: +21.00 pts  |  +$1050.00\nDuración: 127m 00s\nMotivo: Take Profit (simulado)");
+                System.Threading.Thread.Sleep(600);
+                Post("🧪 [TEST] Secuencia completada. Telegram funciona correctamente ✅");
+            });
+        }
+
+        // ── Mensajes heredados ───────────────────────────────────────────────
+
+        private static string BuildLegacyMessage(Msg type, string ctx)
         {
             string ts = DateTime.Now.ToString("HH:mm:ss");
             switch (type)
             {
-                case Msg.BotStart:
-                    return $"🟢 [{ts}] BMO arrancó. {ctx}";
-                case Msg.BotStop:
-                    return $"🔴 [{ts}] BMO detenido. {ctx}";
-                case Msg.TradeOpened:
-                    return $"📈 [{ts}] Trade abierto. {ctx}";
-                case Msg.TradeClosed:
-                    return $"📉 [{ts}] Trade cerrado. {ctx}";
-                case Msg.DailyLossWarning:
-                    return $"⚠️ [{ts}] Daily loss warning. {ctx}";
-                case Msg.ConsistencyWarning:
-                    return $"⚠️ [{ts}] Consistencia 50% — setup saltado. {ctx}";
-                case Msg.StrategyError:
-                    return $"🚨 [{ts}] ERROR en estrategia. {ctx}";
-                case Msg.Heartbeat:
-                    return $"💓 [{ts}] BMO alive. {ctx}";
-                default:
-                    return $"[BMO/{ts}] {ctx}";
+                case Msg.BotStart:           return $"🟢 [{ts}] BMO arrancó. {ctx}";
+                case Msg.BotStop:            return $"🔴 [{ts}] BMO detenido. {ctx}";
+                case Msg.TradeOpened:        return $"📈 [{ts}] Trade abierto. {ctx}";
+                case Msg.TradeClosed:        return $"📉 [{ts}] Trade cerrado. {ctx}";
+                case Msg.DailyLossWarning:   return $"⚠️ [{ts}] Daily loss warning. {ctx}";
+                case Msg.ConsistencyWarning: return $"⚠️ [{ts}] Consistencia 50% — setup saltado. {ctx}";
+                case Msg.StrategyError:      return $"🚨 [{ts}] ERROR en estrategia. {ctx}";
+                case Msg.Heartbeat:          return $"💓 [{ts}] BMO alive. {ctx}";
+                case Msg.SetupSkipped:       return $"⚠️ [{ts}] Setup descartado. {ctx}";
+                case Msg.DailyReport:        return $"📊 [{ts}] Reporte diario. {ctx}";
+                default:                     return $"[BMO/{ts}] {ctx}";
             }
         }
 
-        // ── HTTP POST a Telegram Bot API ─────────────────────────────────────
+        // ── Foto (screenshot del gráfico) ───────────────────────────────────
+
+        public void SendPhotoAsync(byte[] imageBytes, string caption = "")
+        {
+            if (!_enabled || imageBytes == null || imageBytes.Length == 0) return;
+            Task.Run(() => PostPhoto(imageBytes, caption));
+        }
+
+        private void PostPhoto(byte[] imageBytes, string caption)
+        {
+            try
+            {
+                using (var client = new System.Net.Http.HttpClient())
+                using (var form   = new System.Net.Http.MultipartFormDataContent())
+                {
+                    form.Add(new System.Net.Http.StringContent(_chatId),       "chat_id");
+                    form.Add(new System.Net.Http.ByteArrayContent(imageBytes), "photo", "chart.png");
+                    if (!string.IsNullOrEmpty(caption))
+                        form.Add(new System.Net.Http.StringContent(caption), "caption");
+                    client.PostAsync($"https://api.telegram.org/bot{_token}/sendPhoto", form)
+                          .GetAwaiter().GetResult();
+                }
+            }
+            catch { }
+        }
+
+        // ── HTTP POST ────────────────────────────────────────────────────────
 
         private void Post(string text)
         {
@@ -118,19 +278,13 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 string url     = $"https://api.telegram.org/bot{_token}/sendMessage";
                 string payload = $"{{\"chat_id\":\"{_chatId}\",\"text\":{EscapeJson(text)}}}";
-
                 using (var wc = new WebClient())
                 {
                     wc.Headers[HttpRequestHeader.ContentType] = "application/json";
                     wc.UploadString(url, "POST", payload);
                 }
             }
-            catch
-            {
-                // Alerta no crítica: loggear localmente si falla, no crashear el bot.
-                // NT8 no expone un logger estático; el caller puede envolver en try/catch
-                // y usar Print() si necesita visibilidad del fallo.
-            }
+            catch { /* Alerta no crítica: no crashear el bot si Telegram falla */ }
         }
 
         private static string EscapeJson(string s)

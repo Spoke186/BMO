@@ -26,6 +26,13 @@ venv/
 logs/
 *.csv
 backtest/results/
+backtest/_csv_path*.bin
+
+# Runtime data (SQLite DB con datos de cuenta real — nunca al repo)
+data/
+
+# Diagnósticos auto-generados por NT8
+resultados/backtest_diag.txt
 
 # Claude Code local settings
 .claude/settings.local.json
