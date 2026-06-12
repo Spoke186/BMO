@@ -295,6 +295,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 string payload = $"{{\"chat_id\":\"{_chatId}\",\"text\":{EscapeJson(text)}}}";
                 using (var wc = new WebClient())
                 {
+                    // Default de WebClient es ANSI: emojis/acentos se corrompen y Telegram
+                    // responde 400 a TODO mensaje no-ASCII. UTF-8 obligatorio.
+                    wc.Encoding = System.Text.Encoding.UTF8;
                     wc.Headers[HttpRequestHeader.ContentType] = "application/json";
                     wc.UploadString(url, "POST", payload);
                 }
@@ -308,9 +311,16 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             try
             {
+                string detail = ex.Message;
+                var web = ex as WebException;
+                if (web?.Response != null)
+                {
+                    using (var sr = new System.IO.StreamReader(web.Response.GetResponseStream()))
+                        detail += " | " + sr.ReadToEnd();
+                }
                 System.IO.File.AppendAllText(
                     @"C:\Users\Sergio\BMO\resultados\telegram_err.txt",
-                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {op}: {ex.Message}\r\n");
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {op}: {detail}\r\n");
             }
             catch { }
         }
