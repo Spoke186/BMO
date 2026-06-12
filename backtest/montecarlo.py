@@ -7,12 +7,15 @@ pero el max drawdown NO. Apex quema la cuenta por trailing DD ($2,500), así que
 lo que importa no es solo el neto: es la probabilidad de que una mala RACHA
 toque el trailing antes de que la cuenta se asiente.
 
-Dos modos de remuestreo:
+Tres modos de remuestreo:
   - shuffle:   permuta el orden de los trades reales (mismo conjunto exacto).
                Responde: "con ESTOS trades, ¿qué tan peligroso era el orden?"
   - bootstrap: muestrea N trades CON reemplazo de la distribución observada.
                Responde: "si el futuro se parece a la muestra, ¿qué rango de
                resultados y drawdowns espero?" (el neto final SÍ varía aquí)
+  - block:     bootstrap por BLOQUES de semana ISO (con reemplazo). Los regímenes
+               ATR crean rachas — el barajado simple las destruye y subestima el
+               riesgo de drawdown. Requiere fechas (CSVs reales, no --demo).
 
 Modelo Apex 50K (proxy local — Apex calcula en su server con unrealized):
   - Trailing DD $2,500 desde el high-water de equity.
@@ -26,13 +29,21 @@ Uso:
     python montecarlo.py --demo                  # escenarios ACTUAL + HIPOTETICO
     python montecarlo.py --demo --scenario "ACTUAL:1050/375" --runs 20000
 
+    # Comparación de variantes (research TP parcial): cada --variant agrega sus
+    # CSVs (5 períodos) como UN dataset; al final sale tabla A vs B vs C vs D.
+    python montecarlo.py --variant "A:a_p1.csv,a_p2.csv,..." \\
+                         --variant "D:d_p1.csv,d_p2.csv,..." --runs 20000
+
 Opciones:
     --demo            trades sintéticos calibrados a stats sesión 20 (237 trades)
     --scenario S      demo: "NOMBRE:TP/SL" (repetible; default ACTUAL:1050/375
                       y HIPOTETICO:700/250)
+    --variant V       "LABEL:csv1,csv2,..." (repetible) — agrega los CSVs como
+                      una variante para la tabla comparativa
     --runs N          corridas Monte Carlo (default 10000)
     --trailing-dd D   trailing drawdown Apex (default 2500)
     --lock-profit P   profit que congela el trailing (default 2600)
+    --goal G          profit goal eval Apex 50K (default 3000)
     --n-boot N        trades por corrida bootstrap (default: n de la muestra)
     --seed S          semilla RNG (default 42, reproducible)
     --outdir D        carpeta para PNGs (default backtest/)
@@ -149,7 +160,8 @@ def demo_trades(rng: random.Random, tp_usd: float, sl_usd: float) -> list[dict]:
 # ─── núcleo Monte Carlo ──────────────────────────────────────────────────────
 
 def run_sequence(profits: list[float], maes: list[float],
-                 trailing_dd: float, lock_profit: float) -> dict:
+                 trailing_dd: float, lock_profit: float,
+                 goal: float = 3000.0) -> dict:
     """Recorre una secuencia de trades y devuelve métricas de la corrida."""
     equity = 0.0
     hwm = 0.0
@@ -158,6 +170,7 @@ def run_sequence(profits: list[float], maes: list[float],
     max_dd = 0.0
     busted = False
     bust_at = None
+    goal_at = None          # primer trade donde equity >= goal SIN haber quemado antes
     streak = 0
     worst_streak = 0
     curve = [0.0]
@@ -173,6 +186,8 @@ def run_sequence(profits: list[float], maes: list[float],
         if not busted and equity <= floor:
             busted = True
             bust_at = i + 1
+        if goal_at is None and not busted and equity >= goal:
+            goal_at = i + 1
         hwm = max(hwm, equity)
         if not locked and hwm >= lock_profit:
             locked = True
@@ -186,34 +201,62 @@ def run_sequence(profits: list[float], maes: list[float],
         curve.append(equity)
 
     return {"final": equity, "max_dd": max_dd, "busted": busted,
-            "bust_at": bust_at, "worst_streak": worst_streak, "curve": curve}
+            "bust_at": bust_at, "goal_at": goal_at,
+            "worst_streak": worst_streak, "curve": curve}
+
+def week_blocks(trades: list[dict]) -> list[list[int]]:
+    """Índices de trades agrupados por semana ISO, en orden cronológico.
+    Preserva las rachas intra-semana que el shuffle destruye."""
+    order = sorted(range(len(trades)), key=lambda i: trades[i].get("date") or date.min)
+    blocks: list[list[int]] = []
+    cur_key = None
+    for i in order:
+        d = trades[i].get("date")
+        key = d.isocalendar()[:2] if d else ("?", 0)
+        if key != cur_key:
+            blocks.append([])
+            cur_key = key
+        blocks[-1].append(i)
+    return blocks
 
 def monte_carlo(trades: list[dict], runs: int, mode: str, rng: random.Random,
                 trailing_dd: float, lock_profit: float,
-                n_boot: int | None = None, keep_curves: int = 2000) -> dict:
+                n_boot: int | None = None, keep_curves: int = 2000,
+                goal: float = 3000.0) -> dict:
     profits = [t["profit"] for t in trades]
     maes = [t.get("mae", 0.0) for t in trades]
     n = n_boot or len(trades)
     idx = list(range(len(trades)))
+    blocks = week_blocks(trades) if mode == "block" else None
 
-    finals, dds, streaks, bust_ats = [], [], [], []
+    finals, dds, streaks, bust_ats, goal_ats = [], [], [], [], []
     curves, curve_busted = [], []
     n_bust = 0
+    n_goal = 0
     for r in range(runs):
         if mode == "shuffle":
             order = idx[:]
             rng.shuffle(order)
+        elif mode == "block":
+            # bootstrap de semanas completas con reemplazo hasta llenar n trades
+            order = []
+            while len(order) < n:
+                order.extend(blocks[rng.randrange(len(blocks))])
+            order = order[:n]
         else:  # bootstrap con reemplazo
             order = [rng.randrange(len(trades)) for _ in range(n)]
         res = run_sequence([profits[i] for i in order],
                            [maes[i] for i in order],
-                           trailing_dd, lock_profit)
+                           trailing_dd, lock_profit, goal)
         finals.append(res["final"])
         dds.append(res["max_dd"])
         streaks.append(res["worst_streak"])
         if res["busted"]:
             n_bust += 1
             bust_ats.append(res["bust_at"])
+        if res["goal_at"] is not None:
+            n_goal += 1
+            goal_ats.append(res["goal_at"])
         if r < keep_curves:
             curves.append(res["curve"])
             curve_busted.append(res["busted"])
@@ -233,6 +276,10 @@ def monte_carlo(trades: list[dict], runs: int, mode: str, rng: random.Random,
             dead += c.get(j, 0)
             alive[j] = 1 - dead / runs
 
+    # calendario: días por trade observados en la muestra → traducir goal_at a días
+    dts = [t["date"] for t in trades if t.get("date")]
+    days_per_trade = ((max(dts) - min(dts)).days / max(1, len(dts))) if len(dts) > 1 else None
+
     return {
         "mode": mode, "runs": runs, "n": n,
         "finals": finals, "dds": dds,
@@ -244,6 +291,10 @@ def monte_carlo(trades: list[dict], runs: int, mode: str, rng: random.Random,
         "dd_p99": pct(dds, 0.99),
         "prob_bust": n_bust / runs,
         "bust_at_med": statistics.median(bust_ats) if bust_ats else None,
+        "prob_goal": n_goal / runs,
+        "goal_at_med": statistics.median(goal_ats) if goal_ats else None,
+        "goal_days_med": (statistics.median(goal_ats) * days_per_trade)
+                         if goal_ats and days_per_trade else None,
         "streak_p50": pct(streaks, 0.50), "streak_p95": pct(streaks, 0.95),
         "prob_neg": sum(1 for f in finals if f < 0) / runs,
     }
@@ -285,6 +336,11 @@ def report(label: str, mc: dict, trailing_dd: float, hist: bool = True) -> None:
           f"{mc['prob_bust']*100:5.1f}%")
     if mc["bust_at_med"] is not None:
         print(f"      Si quema, mediana al trade #{mc['bust_at_med']:.0f}")
+    print(f"  Prob. alcanzar profit goal ..... {mc['prob_goal']*100:5.1f}%")
+    if mc["goal_at_med"] is not None:
+        extra = (f" (~{mc['goal_days_med']:.0f} días calendario)"
+                 if mc.get("goal_days_med") else "")
+        print(f"      Si llega, mediana al trade #{mc['goal_at_med']:.0f}{extra}")
     if hist:
         print(f"\n  Distribución de MAX DRAWDOWN ({mc['runs']:,} corridas):")
         for line in ascii_hist(mc["dds"]):
@@ -440,9 +496,14 @@ def main() -> None:
     p.add_argument("--demo", action="store_true")
     p.add_argument("--scenario", action="append", type=parse_scenario,
                    help='demo: "NOMBRE:TP/SL", repetible')
+    p.add_argument("--variant", action="append",
+                   help='"LABEL:csv1,csv2,..." (repetible) — variante agregada '
+                        'para la tabla comparativa A/B/C/D')
     p.add_argument("--runs", type=int, default=10000)
     p.add_argument("--trailing-dd", type=float, default=2500.0)
     p.add_argument("--lock-profit", type=float, default=2600.0)
+    p.add_argument("--goal", type=float, default=3000.0,
+                   help="profit goal eval Apex 50K (default 3000)")
     p.add_argument("--n-boot", type=int, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--outdir", default="backtest")
@@ -475,6 +536,19 @@ def main() -> None:
             t = demo_trades(rng, tp, sl)
             datasets.append((f"{name} (TP ${tp:,.0f} / SL ${sl:,.0f})",
                              t, palette[k % len(palette)]))
+    elif args.variant:
+        for k, v in enumerate(args.variant):
+            if ":" not in v:
+                sys.exit(f"--variant inválido: {v!r} (formato LABEL:csv1,csv2,...)")
+            lab, paths = v.split(":", 1)
+            trades = []
+            for path in paths.split(","):
+                t = load_trades(path.strip(), lab)
+                print(f"  [{lab}] {len(t):3d} trades de {path.strip()}")
+                trades += t
+            if not trades:
+                sys.exit(f"Variante {lab}: sin trades.")
+            datasets.append((lab, trades, palette[k % len(palette)]))
     elif args.csvs:
         trades = []
         for arg in args.csvs:
@@ -487,9 +561,10 @@ def main() -> None:
         datasets.append((f"REAL ({len(trades)} trades)", trades, NEON["cyan"]))
     else:
         p.print_help()
-        sys.exit("\nPasa CSVs (LABEL:ruta.csv) o usa --demo.")
+        sys.exit("\nPasa CSVs (LABEL:ruta.csv), --variant o --demo.")
 
     comparables = []
+    summary_rows = []  # tabla comparativa final (research TP parcial §5)
     for label, trades, color in datasets:
         net = sum(t["profit"] for t in trades)
         wins = sum(1 for t in trades if t["profit"] > 0)
@@ -497,20 +572,51 @@ def main() -> None:
         print(f"Muestra: n={len(trades)}, Net={net:+,.0f}, "
               f"WR={wins/len(trades)*100:.1f}%")
 
+        has_dates = any(t.get("date") for t in trades)
+        modes = ["shuffle", "block"] if has_dates else ["shuffle", "bootstrap"]
+        if not has_dates:
+            print("  (sin fechas — block bootstrap no disponible, uso bootstrap simple)")
+
+        mcs = {}
         rng = random.Random(args.seed + 1)
-        mc_sh = monte_carlo(trades, args.runs, "shuffle", rng,
-                            args.trailing_dd, args.lock_profit, args.n_boot)
-        report(label, mc_sh, args.trailing_dd, hist=False)
-        mc_bs = monte_carlo(trades, args.runs, "bootstrap", rng,
-                            args.trailing_dd, args.lock_profit, args.n_boot)
-        report(label, mc_bs, args.trailing_dd, hist=not have_mpl)
-        comparables.append((label, mc_bs, color))
+        for mode in modes:
+            mc = monte_carlo(trades, args.runs, mode, rng,
+                             args.trailing_dd, args.lock_profit, args.n_boot,
+                             goal=args.goal)
+            report(label, mc, args.trailing_dd,
+                   hist=(mode == modes[-1] and not have_mpl))
+            mcs[mode] = mc
+
+        mc_main = mcs[modes[-1]]  # block (o bootstrap) para gráficos/tabla
+        comparables.append((label, mc_main, color))
+        summary_rows.append((label, len(trades), net, mcs))
 
         if have_mpl:
             safe = re.sub(r'\W+', '_', label.split(" (")[0].lower())
             out = f"{args.outdir}/montecarlo_{safe}.png"
-            fancy_png(label, mc_bs, args.trailing_dd, out, color)
+            fancy_png(label, mc_main, args.trailing_dd, out, color)
             print(f"  Gráfico: {out}")
+
+    if len(summary_rows) > 1:
+        print(f"\n{'='*98}")
+        print(f"TABLA COMPARATIVA — trailing ${args.trailing_dd:,.0f} | "
+              f"goal ${args.goal:,.0f} | {args.runs:,} corridas/modo")
+        print("="*98)
+        print(f"{'Variante':10s} {'n':>4} {'Net':>9} | "
+              f"{'quema(sh)':>9} {'quema(bk)':>9} | "
+              f"{'goal(sh)':>8} {'goal(bk)':>8} {'días@goal':>9} | "
+              f"{'final p5':>9} {'p50':>8} {'p95':>8}")
+        print("-"*98)
+        for label, n, net, mcs in summary_rows:
+            sh = mcs.get("shuffle")
+            bk = mcs.get("block") or mcs.get("bootstrap")
+            dg = f"{bk['goal_days_med']:.0f}" if bk.get("goal_days_med") else "n/a"
+            print(f"{label:10s} {n:4d} {net:+9,.0f} | "
+                  f"{sh['prob_bust']*100:8.1f}% {bk['prob_bust']*100:8.1f}% | "
+                  f"{sh['prob_goal']*100:7.1f}% {bk['prob_goal']*100:7.1f}% {dg:>9} | "
+                  f"{bk['final_p05']:+9,.0f} {bk['final_p50']:+8,.0f} {bk['final_p95']:+8,.0f}")
+        print("\n(sh = shuffle, bk = block bootstrap semanal — criterio §6.1 exige")
+        print(" mejorar la prob. de quema vs baseline A en AMBOS modos)")
 
     if have_mpl and len(comparables) > 1:
         out = f"{args.outdir}/montecarlo_comparacion.png"

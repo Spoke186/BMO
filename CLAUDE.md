@@ -134,6 +134,10 @@ bajo reglas **Apex Trader Funding**, plan **50K**. Un único archivo: `ApexNqIct
 | EnableFileLog | true | Log a archivo para diagnóstico |
 | ManageTrailStop | vacío | Trail off: corta TPs — peor resultado |
 | SetupBMinMinutes | **15** | B espera 15min: da chance a A de procesar la barra 15m |
+| EnablePartialTP | **false** | Hipótesis TP parcial (rama research) — OFF = baseline intacto |
+| PartialTPTriggerUsd | 350 | Flotante total (2 contratos) que dispara el parcial |
+| PartialTPQuantity | 1 | Contratos cerrados en el parcial (queda 1 runner) |
+| BreakevenOffsetUsd | 30 | Colchón del stop breakeven del runner (1 MNQ = 15 pts) |
 
 ### Setup A — FVG (mayor calidad, requiere confluencia 15m)
 Temporalidades: **15m sesgo/FVG, 1m gatillo**.
@@ -203,6 +207,23 @@ Patrón: banco barre liquidez al abrir NY → reversión institucional. Niveles 
   SESSION_CLOSE es el mecanismo adaptativo implícito del sistema — no un exit accidental.
   Scripts: `backtest/diagnose_regime.py`, `backtest/analyze_intermediate_exits.py`.
   **FASE 3 CERRADA**. FASE 4: cualquier propuesta debe preservar el mecanismo SESSION_CLOSE.
+- **Sesión 21 (2026-06-12)**: rama `research/gestion-adaptativa` — hipótesis TP PARCIAL (Opción 5).
+  Origen: primer trade Sim llegó a ~+$450 flotantes y murió en SL (−$379); Monte Carlo da ~57%
+  prob. de quemar trailing $2,500 con TP=1050/SL=375. Spec completa: `Nuevas_intrucciones.md`.
+  Implementado en `ApexNqIctStrategy.cs`: `EnablePartialTP` (default **false** = baseline intacto),
+  `PartialTPTriggerUsd=350`, `PartialTPQuantity=1`, `BreakevenOffsetUsd=30`. Con flotante ≥ gatillo:
+  cierra 1 contrato a mercado (`PartialTP`), stop del runner a BE+colchón vía
+  `SetStopLoss(sig, CalculationMode.Price, ...)` (se resetea a Currency en la próxima entrada).
+  Runner conserva TP original y session close. Una vez por trade.
+  `[TRADE-REC]` extendido: `qty=` + `exit=` por contrato (PARTIAL_TP/RUNNER_BE/RUNNER_TP/RUNNER_SC/
+  SL_FULL/TP_FULL/SESSION_CLOSE) usando exit order name + set de entry times con parcial.
+  Matriz de backtests A/B/C/D (4 variantes × 5 períodos) la ejecuta Esteban en Strategy Analyzer.
+  Criterios de decisión PRE-ESCRITOS en `Nuevas_intrucciones.md` §6 — no se modifican tras ver datos.
+  Scripts: `backtest/analyze_partial_tp_feasibility.py` (Q1-Q4 sobre baseline),
+  `backtest/compare_variants.py` (tabla A/B/C/D + veredicto §6 automatizado),
+  `backtest/montecarlo.py` extendido (`--variant`, block bootstrap semanal, profit goal $3K,
+  días-a-goal). Pendiente de insumo: 20 CSVs de Strategy Analyzer (4 variantes × 5 períodos).
+  `main` congelado = control Sim en DEMO7975145.
 
 ## Pendiente / roadmap
 

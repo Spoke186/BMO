@@ -232,6 +232,27 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Dashboard URL", Order = 51, GroupName = "9. Debug")]
 		public string DashboardUrl { get; set; }
+
+		// Hipótesis TP parcial (rama research/gestion-adaptativa, 2026-06-12).
+		// Default OFF = comportamiento baseline intacto. Ver Nuevas_intrucciones.md §1.
+		[NinjaScriptProperty]
+		[Display(Name = "Habilitar TP parcial (runner a breakeven)", Order = 60, GroupName = "3. TP Parcial (research)")]
+		public bool EnablePartialTP { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(50, 5000)]
+		[Display(Name = "Gatillo parcial: ganancia flotante total (USD)", Order = 61, GroupName = "3. TP Parcial (research)")]
+		public double PartialTPTriggerUsd { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(1, 10)]
+		[Display(Name = "Contratos a cerrar en el parcial", Order = 62, GroupName = "3. TP Parcial (research)")]
+		public int PartialTPQuantity { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(0, 500)]
+		[Display(Name = "Colchon breakeven del runner (USD sobre entrada)", Order = 63, GroupName = "3. TP Parcial (research)")]
+		public double BreakevenOffsetUsd { get; set; }
 		#endregion
 
 		#region Estado interno
@@ -286,6 +307,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		// Signal name del trade activo (para ExitLong/Short correcto con Setup A y B).
 		private string activeSignal;
+
+		// TP parcial: una sola ejecución por trade. Reset en cada entrada nueva y por sesión.
+		private bool partialDone;
+		// Entry times de trades donde el parcial ejecutó → el cierre del runner se etiqueta
+		// RUNNER_* en [TRADE-REC]. No se limpia por sesión: el runner puede cerrar en el
+		// session close y registrarse DESPUÉS del ResetForNewSession del día siguiente.
+		private readonly HashSet<DateTime> _partialEntryTimes = new HashSet<DateTime>();
 
 		// Setup C: Order Block 1m
 		private int    obState;   // 0=buscando, 1=OB identificado esperando retorno
@@ -453,6 +481,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				EnableTestMode        = false;
 			EnableDashboard       = true;
 			DashboardUrl          = "http://localhost:8000";
+				EnablePartialTP      = false; // hipótesis research: OFF = baseline intacto
+				PartialTPTriggerUsd  = 350;   // flotante total (2 contratos) que dispara el parcial
+				PartialTPQuantity    = 1;     // cierra 1, deja 1 runner
+				BreakevenOffsetUsd   = 30;    // colchón comisiones/slippage (1 MNQ → 15 pts)
 			}
 			else if (State == State.Configure)
 			{
@@ -657,6 +689,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			UpdateRiskGuards();
 			RecordClosedTrades();
 			ManageTrailStop();
+			// Antes del return de ForcedExit: la posición puede seguir viva pasada la
+			// ventana de entradas y el parcial debe seguir gestionándola hasta el cierre.
+			ManagePartialTP();
 
 			// MarketCalendar adelanta el cierre en medias sesiones CME (12:45 ET).
 			int forcedExitToday = Math.Min(ForcedExit, MarketCalendar.BotForceCloseTime(Time[0]));
@@ -1668,6 +1703,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			tradedToday         = false;
 			tradingDisabled     = false;
 			nearDrawdown        = false;
+			partialDone         = false;
 			setupState          = 0;
 			sweepState15m       = 0;
 			levelBrokenLow15m   = false;
@@ -1718,6 +1754,44 @@ namespace NinjaTrader.NinjaScript.Strategies
 		// Trail desactivado: backtest muestra que corta trades que van al TP ($1050).
 		// Reactivar aqui si se necesita proteccion futura.
 		private void ManageTrailStop() { }
+
+		// Hipótesis TP parcial: con flotante >= gatillo, cierra PartialTPQuantity a mercado
+		// y mueve el stop del runner a breakeven+colchón. El runner conserva TP original y
+		// session close (NO trailing, NO más movimientos). Una sola vez por trade.
+		// El SetStopLoss en modo Price queda reseteado a Currency en la próxima entrada
+		// (todos los call-sites de entrada llaman SetStopLoss(sig, Currency, ...) antes).
+		private void ManagePartialTP()
+		{
+			if (!EnablePartialTP || partialDone) return;
+			if (Position.MarketPosition == MarketPosition.Flat) return;
+			if (Position.Quantity <= PartialTPQuantity) return; // sin runner no hay parcial
+
+			double floating = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]);
+			if (floating < PartialTPTriggerUsd) return;
+
+			string sig = !string.IsNullOrEmpty(activeSignal) ? activeSignal
+			           : Position.MarketPosition == MarketPosition.Long ? "LongFVG" : "ShortFVG";
+
+			int    runnerQty = Position.Quantity - PartialTPQuantity;
+			double ptv       = Instrument.MasterInstrument.PointValue;
+			// Colchón en USD del runner → puntos (MNQ $2/pt: $30 con 1 contrato = 15 pts).
+			double offsetPts = BreakevenOffsetUsd / (ptv * runnerQty);
+			double bePrice   = Position.MarketPosition == MarketPosition.Long
+				? Position.AveragePrice + offsetPts
+				: Position.AveragePrice - offsetPts;
+			bePrice = Instrument.MasterInstrument.RoundToTickSize(bePrice);
+
+			// Breakeven ANTES del exit: SetStopLoss modifica el stop vivo del signal;
+			// el exit parcial reduce su cantidad automáticamente (managed approach).
+			SetStopLoss(sig, CalculationMode.Price, bePrice, false);
+			if (Position.MarketPosition == MarketPosition.Long)
+				ExitLong(0, PartialTPQuantity, "PartialTP", sig);
+			else
+				ExitShort(0, PartialTPQuantity, "PartialTP", sig);
+
+			partialDone = true;
+			L($"[PARTIAL-TP] flotante={floating:F0}>={PartialTPTriggerUsd:F0} → cierra {PartialTPQuantity} @mkt, stop runner BE={bePrice:F2} (entrada {Position.AveragePrice:F2})");
+		}
 
 		private void UpdateRiskGuards()
 		{
@@ -1805,6 +1879,25 @@ namespace NinjaTrader.NinjaScript.Strategies
 				else if (tradePnl > 0)                         _closeReason = "SESSION_CLOSE (ganador)";
 				else                                           _closeReason = "SESSION_CLOSE (perdedor)";
 
+				// Tag de salida POR CONTRATO (research TP parcial): el exit order name del
+				// trade distingue parcial/runner/full. Con 2 contratos y exits separados,
+				// SystemPerformance genera un Trade por cada par entrada-salida.
+				string _exitName = t.Exit.Order != null ? t.Exit.Order.Name : "";
+				if (_exitName == "PartialTP")
+				{
+					_partialEntryTimes.Add(t.Entry.Time);
+					if (_partialEntryTimes.Count > 500) _partialEntryTimes.Clear();
+				}
+				bool _hadPartial = _partialEntryTimes.Contains(t.Entry.Time);
+				string _exitTag;
+				if      (_exitName == "PartialTP")                  _exitTag = "PARTIAL_TP";
+				else if (_exitName.IndexOf("Stop loss",     StringComparison.OrdinalIgnoreCase) >= 0)
+					_exitTag = _hadPartial ? "RUNNER_BE" : "SL_FULL";
+				else if (_exitName.IndexOf("Profit target", StringComparison.OrdinalIgnoreCase) >= 0)
+					_exitTag = _hadPartial ? "RUNNER_TP" : "TP_FULL";
+				else
+					_exitTag = _hadPartial ? "RUNNER_SC" : "SESSION_CLOSE";
+
 				int    _tDir  = t.Entry.MarketPosition == MarketPosition.Long ? 1 : -1;
 				string _tDirS = _tDir == 1 ? "LONG" : "SHORT";
 				double _tPts  = (t.Exit.Price - t.Entry.Price) * _tDir;
@@ -1812,7 +1905,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				// Publicar trade al AddOn (B6) ANTES de alertas/chart: si algo de lo
 				// cosmético falla, el registro para GET /trades/today ya quedó hecho.
-				L($"[TRADE-REC] {_tDirS} in={t.Entry.Price:F2} out={t.Exit.Price:F2} pnl={tradePnl:F2} motivo={_closeReason}");
+				L($"[TRADE-REC] {_tDirS} qty={t.Quantity} in={t.Entry.Price:F2} out={t.Exit.Price:F2} pnl={tradePnl:F2} exit={_exitTag} motivo={_closeReason}");
 				lock (ApexBridgeState.TodayTradesLock)
 					ApexBridgeState.TodayTrades.Add(new TradeSummary
 					{
@@ -2059,6 +2152,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				tradedToday    = true;
 				setupState     = 0;
+				partialDone    = false;
 				activeSignal   = execution.Order.Name;
 				lastEntryPrice = price;
 				lastEntryDir   = (execution.Order.Name == "LongFVG"  ||
