@@ -485,6 +485,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 				{
 					alerts       = new TelegramAlerts();
 					_accountName = Account?.Name ?? "N/A";
+					L($"[TELEGRAM] enabled={alerts.Enabled} cuenta={_accountName} (si false: faltan TELEGRAM_BOT_TOKEN/CHAT_ID; errores de envio en telegram_err.txt)");
 					alerts.SendActivation(_accountName, Instrument.FullName, "1m/15m", "v3-LATCH");
 					if (EnableDashboard)
 					{
@@ -1808,25 +1809,33 @@ namespace NinjaTrader.NinjaScript.Strategies
 				string _tDirS = _tDir == 1 ? "LONG" : "SHORT";
 				double _tPts  = (t.Exit.Price - t.Entry.Price) * _tDir;
 				int    _durMin = (int)(t.Exit.Time - t.Entry.Time).TotalMinutes;
-				alerts?.SendTradeClose(_tDirS, t.Entry.Price, t.Exit.Price,
-				    _tPts, tradePnl, t.Exit.Time - t.Entry.Time, _closeReason);
-				_dashboard?.LogTradeClose(_tDirS, t.Entry.Price, t.Exit.Price,
-				    tradePnl, _tPts, _closeReason, _durMin);
-				CaptureAndSendChart(string.Format("{0} {1} | {2}{3:C}",
-				    tradePnl >= 0 ? "OK" : "X", _closeReason,
-				    tradePnl >= 0 ? "+" : "", tradePnl));
 
-				// Publicar trade al AddOn (B6) — accesible via GET /trades/today
+				// Publicar trade al AddOn (B6) ANTES de alertas/chart: si algo de lo
+				// cosmético falla, el registro para GET /trades/today ya quedó hecho.
+				L($"[TRADE-REC] {_tDirS} in={t.Entry.Price:F2} out={t.Exit.Price:F2} pnl={tradePnl:F2} motivo={_closeReason}");
 				lock (ApexBridgeState.TodayTradesLock)
 					ApexBridgeState.TodayTrades.Add(new TradeSummary
 					{
-						Direction  = t.Entry.MarketPosition == MarketPosition.Long ? "LONG" : "SHORT",
+						Direction  = _tDirS,
 						EntryPrice = t.Entry.Price,
 						ExitPrice  = t.Exit.Price,
 						PnlUsd     = tradePnl,
 						ExitTime   = t.Exit.Time.ToString("HH:mm:ss"),
 						Result     = tradePnl > 0 ? "WIN" : "LOSS",
 					});
+
+				alerts?.SendTradeClose(_tDirS, t.Entry.Price, t.Exit.Price,
+				    _tPts, tradePnl, t.Exit.Time - t.Entry.Time, _closeReason);
+				_dashboard?.LogTradeClose(_tDirS, t.Entry.Price, t.Exit.Price,
+				    tradePnl, _tPts, _closeReason, _durMin);
+				// Captura de chart toca UI cross-thread: si truena, no debe tumbar el registro.
+				try
+				{
+					CaptureAndSendChart(string.Format("{0} {1} | {2}{3:C}",
+					    tradePnl >= 0 ? "OK" : "X", _closeReason,
+					    tradePnl >= 0 ? "+" : "", tradePnl));
+				}
+				catch (Exception ex) { L($"[TRADE-REC] CaptureAndSendChart fallo: {ex.Message}"); }
 
 				// Resolver el pageId de Notion (la apertura puede haber tardado unos ms)
 				if (notionPageTask != null)

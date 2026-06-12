@@ -73,18 +73,23 @@ namespace NinjaTrader.NinjaScript.AddOns
 
 	public class ApexBridgeAddOn : AddOnBase
 	{
-		// B3: cuenta/simbolo/token vienen de variables de entorno del SO (NT8 las hereda).
-		// Defaults sirven para Sim out-of-the-box; al conectar Apex, el operador exporta
-		// APEX_ACCOUNT (nombre real ej "APEX-XXXXX") y deja APEX_INSTRUMENT en NQ.
-		private static readonly string AccountName    =
-			Environment.GetEnvironmentVariable("APEX_ACCOUNT")    ?? "Sim101";
-		// LOCKED: NQ mini (el bracket USD fijo lo implica; MNQ no sirve con esos USD).
-		private static readonly string InstrumentName =
-			Environment.GetEnvironmentVariable("APEX_INSTRUMENT") ?? "NQ";
+		// B3: cuenta/simbolo/token vienen de variables de entorno (proceso, con fallback al
+		// registro User — setx no afecta procesos ya arrancados). Defaults para Sim
+		// out-of-the-box; al conectar Apex, exportar APEX_ACCOUNT (ej "APEX-XXXXX").
+		// El bracket USD fijo escala por point value del instrumento: MNQ ($2/pt) y NQ
+		// ($20/pt) funcionan igual — APEX_INSTRUMENT debe coincidir con el del chart.
+		private static readonly string AccountName    = Env("APEX_ACCOUNT", "Sim101");
+		private static readonly string InstrumentName = Env("APEX_INSTRUMENT", "NQ");
 		private const int Port = 8731;
 		// Seguridad: token desde env BRIDGE_TOKEN (mismo valor que usa el MCP). Sin hardcode real.
-		private static readonly string Token =
-			Environment.GetEnvironmentVariable("BRIDGE_TOKEN")    ?? "CHANGE_ME_LOCAL_TOKEN";
+		private static readonly string Token = Env("BRIDGE_TOKEN", "CHANGE_ME_LOCAL_TOKEN");
+
+		private static string Env(string name, string def)
+		{
+			return Environment.GetEnvironmentVariable(name)
+				?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User)
+				?? def;
+		}
 
 		private HttpListener listener;
 		private Thread       listenerThread;

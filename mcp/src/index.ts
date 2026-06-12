@@ -72,7 +72,7 @@ function checkMarket(dateStr?: string): string {
     trading_day:   isTradingDay,
     holiday:       isHoliday,
     half_session:  isHalf,
-    kill_zone:     isTradingDay ? { open: "08:30 ET", close: "11:00 ET" } : null,
+    kill_zone:     isTradingDay ? { open: "09:30 ET", close: "12:00 ET" } : null,
     // En media sesión el cierre anticipado es 13:00 ET; bot cierra a las 12:45.
     bot_force_close: isTradingDay ? (isHalf ? "12:45 ET" : "15:55 ET") : null,
   });

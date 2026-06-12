@@ -34,9 +34,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         public TelegramAlerts()
         {
-            _token   = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
-            _chatId  = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID")   ?? "";
+            _token   = Env("TELEGRAM_BOT_TOKEN");
+            _chatId  = Env("TELEGRAM_CHAT_ID");
             _enabled = !string.IsNullOrEmpty(_token) && !string.IsNullOrEmpty(_chatId);
+        }
+
+        /// <summary>Visible para que la estrategia loguee si las alertas quedaron activas.</summary>
+        public bool Enabled => _enabled;
+
+        // setx escribe HKCU\Environment; el proceso NT8 solo hereda el bloque de entorno
+        // con el que arrancó. Leer también el registro User elimina la dependencia del
+        // orden setx → reinicio de NT8 (causa de alertas silenciosamente deshabilitadas).
+        private static string Env(string name)
+        {
+            return Environment.GetEnvironmentVariable(name)
+                ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User)
+                ?? "";
         }
 
         // ── API heredada (compatibilidad) ────────────────────────────────────
@@ -267,7 +280,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                           .GetAwaiter().GetResult();
                 }
             }
-            catch { }
+            catch (Exception ex) { LogError("sendPhoto", ex); }
         }
 
         // ── HTTP POST ────────────────────────────────────────────────────────
@@ -276,6 +289,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             try
             {
+                // NT8 corre .NET Framework: forzar TLS 1.2 por si el default del runtime es menor.
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
                 string url     = $"https://api.telegram.org/bot{_token}/sendMessage";
                 string payload = $"{{\"chat_id\":\"{_chatId}\",\"text\":{EscapeJson(text)}}}";
                 using (var wc = new WebClient())
@@ -284,7 +299,20 @@ namespace NinjaTrader.NinjaScript.Strategies
                     wc.UploadString(url, "POST", payload);
                 }
             }
-            catch { /* Alerta no crítica: no crashear el bot si Telegram falla */ }
+            catch (Exception ex) { LogError("sendMessage", ex); }
+        }
+
+        // Alerta no crítica: nunca crashear el bot si Telegram falla — pero dejar rastro.
+        // El catch vacío anterior ocultó fallos durante días (cero mensajes, cero evidencia).
+        private static void LogError(string op, Exception ex)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    @"C:\Users\Sergio\BMO\resultados\telegram_err.txt",
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {op}: {ex.Message}\r\n");
+            }
+            catch { }
         }
 
         private static string EscapeJson(string s)
